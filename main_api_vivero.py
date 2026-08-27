@@ -311,7 +311,7 @@ def iniciar_emulador_esp32():
 
             # Insertar registro en la base de datos Neon
             lectura = LecturaHumedadCreate(
-                id_sensor="ESP32-AUTO",
+                id_sensor="SEN-CAP-S01",
                 id_sector=1,
                 humedad_porcentaje=round(humedad_actual, 1),
                 valor_adc_crudo=adc_crudo
