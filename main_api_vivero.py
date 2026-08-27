@@ -13,7 +13,8 @@ from datetime import datetime
 from contextlib import contextmanager
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, status, Security, Depends
+from fastapi.security.api_key import APIKeyHeader
 import psycopg2
 from psycopg2 import pool
 from psycopg2.extras import RealDictCursor
@@ -21,6 +22,20 @@ import uvicorn
 
 # Cargar variables del entorno desde el archivo .env
 load_dotenv()
+
+# =============================================================================
+# CONFIGURACIÓN DE SEGURIDAD (API KEY)
+# =============================================================================
+API_KEY = os.environ.get("API_KEY", "sv_live_8b3a7f9d2e1c4a5b6f8e7d9c0b1a2f3d")
+api_key_header_scheme = APIKeyHeader(name="X-API-Key", auto_error=True)
+
+def get_api_key(api_key_header: str = Security(api_key_header_scheme)):
+    if api_key_header == API_KEY:
+        return api_key_header
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Acceso Denegado. API Key inválida o faltante.",
+    )
 
 # =============================================================================
 # MODELOS PYDANTIC (DTOs)
@@ -232,41 +247,41 @@ def health_check():
     return {"status": "online", "database": "Neon Serverless PostgreSQL", "timestamp": datetime.utcnow()}
 
 # Endpoints de Lecturas (Usados por ESP32 y Desktop App)
-@app.post("/api/v1/mediciones", status_code=status.HTTP_201_CREATED, tags=["Telemetría ESP32"])
+@app.post("/api/v1/mediciones", status_code=status.HTTP_201_CREATED, tags=["Telemetría ESP32"], dependencies=[Depends(get_api_key)])
 def registrar_medicion(lectura: LecturaHumedadCreate):
     return repository.insert_lectura(lectura)
 
-@app.get("/api/v1/mediciones/sector/{id_sector}", tags=["Telemetría ESP32"])
+@app.get("/api/v1/mediciones/sector/{id_sector}", tags=["Telemetría ESP32"], dependencies=[Depends(get_api_key)])
 def consultar_mediciones_sector(id_sector: int, limit: int = 50):
     return repository.get_lecturas_by_sector(id_sector, limit)
 
 # Endpoints de Riego
-@app.post("/api/v1/riego/evento", status_code=status.HTTP_201_CREATED, tags=["Control de Riego"])
+@app.post("/api/v1/riego/evento", status_code=status.HTTP_201_CREATED, tags=["Control de Riego"], dependencies=[Depends(get_api_key)])
 def registrar_evento_riego(evento: EventoRiegoCreate):
     return repository.insert_evento_riego(evento)
 
-@app.get("/api/v1/riego/eventos", tags=["Control de Riego"])
+@app.get("/api/v1/riego/eventos", tags=["Control de Riego"], dependencies=[Depends(get_api_key)])
 def listar_eventos_riego(limit: int = 20):
     return repository.get_eventos_riego(limit)
 
 # Endpoints de Alertas de Nivel de Agua
-@app.post("/api/v1/alertas", status_code=status.HTTP_201_CREATED, tags=["Alertas & Seguridad"])
+@app.post("/api/v1/alertas", status_code=status.HTTP_201_CREATED, tags=["Alertas & Seguridad"], dependencies=[Depends(get_api_key)])
 def registrar_alerta(alerta: AlertaNivelAguaCreate):
     return repository.insert_alerta(alerta)
 
-@app.get("/api/v1/alertas", tags=["Alertas & Seguridad"])
+@app.get("/api/v1/alertas", tags=["Alertas & Seguridad"], dependencies=[Depends(get_api_key)])
 def listar_alertas(limit: int = 20):
     return repository.get_alertas_recientes(limit)
 
 # Endpoints de Umbrales de Riego
-@app.get("/api/v1/umbrales/{id_sector}", tags=["Configuración"])
+@app.get("/api/v1/umbrales/{id_sector}", tags=["Configuración"], dependencies=[Depends(get_api_key)])
 def consultar_umbral(id_sector: int):
     umbral = repository.get_umbral_by_sector(id_sector)
     if not umbral:
         raise HTTPException(status_code=404, detail="Umbral no encontrado para el sector especificado")
     return umbral
 
-@app.put("/api/v1/umbrales/{id_sector}", tags=["Configuración"])
+@app.put("/api/v1/umbrales/{id_sector}", tags=["Configuración"], dependencies=[Depends(get_api_key)])
 def actualizar_umbral(id_sector: int, umbral: UmbralUpdate):
     return repository.update_umbral(id_sector, umbral)
 

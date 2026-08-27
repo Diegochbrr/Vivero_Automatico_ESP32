@@ -1,14 +1,23 @@
+import os
 import requests
 from datetime import datetime
+from dotenv import load_dotenv
+
+load_dotenv()
 
 class ModeloRiego:
     def __init__(self):
-        self.api_url = "http://localhost:8000/api/v1"
+        self.api_url = "https://vivero-automatico-esp32.onrender.com/api/v1"
+        self.api_key = os.environ.get("API_KEY", "sv_live_8b3a7f9d2e1c4a5b6f8e7d9c0b1a2f3d")
 
     def obtener_historial(self):
         """Recupera todos los registros históricos de mediciones desde la API."""
         try:
-            response = requests.get(f"{self.api_url}/mediciones/sector/1?limit=50", timeout=3)
+            response = requests.get(
+                f"{self.api_url}/mediciones/sector/1?limit=50", 
+                headers={"X-API-Key": self.api_key},
+                timeout=3
+            )
             if response.status_code == 200:
                 datos = response.json()
                 # Formato esperado por el controlador/vista para la tabla:
@@ -31,7 +40,11 @@ class ModeloRiego:
     def obtener_alertas(self):
         """Recupera las alertas registradas desde la API."""
         try:
-            response = requests.get(f"{self.api_url}/alertas?limit=20", timeout=3)
+            response = requests.get(
+                f"{self.api_url}/alertas?limit=20", 
+                headers={"X-API-Key": self.api_key},
+                timeout=3
+            )
             if response.status_code == 200:
                 datos = response.json()
                 # Formato tabla alertas: ["Hora", "Tipo", "Sensor", "Valor", "Estado"]
