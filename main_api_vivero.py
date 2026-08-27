@@ -356,8 +356,9 @@ def iniciar_emulador_esp32():
 @app.on_event("startup")
 def on_startup():
     # Iniciar emulador de telemetría en hilo daemon al arrancar la API
-    hilo = threading.Thread(target=iniciar_emulador_esp32, daemon=True)
-    hilo.start()
+    # hilo = threading.Thread(target=iniciar_emulador_esp32, daemon=True)
+    # hilo.start()
+    print("Emulador IoT desactivado para recibir datos reales de Wokwi")
 
 
 if __name__ == "__main__":
