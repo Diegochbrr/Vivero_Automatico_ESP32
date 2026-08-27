@@ -5,9 +5,6 @@ Incluye generador de telemetría IoT en segundo plano para operar sin depender d
 """
 
 import os
-import threading
-import time
-import random
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from contextlib import contextmanager
@@ -284,81 +281,6 @@ def consultar_umbral(id_sector: int):
 @app.put("/api/v1/umbrales/{id_sector}", tags=["Configuración"], dependencies=[Depends(get_api_key)])
 def actualizar_umbral(id_sector: int, umbral: UmbralUpdate):
     return repository.update_umbral(id_sector, umbral)
-
-
-# =============================================================================
-# EMULADOR DE TELEMETRÍA IOT (INTEGRADO EN SEGUNDO PLANO)
-# =============================================================================
-
-def iniciar_emulador_esp32():
-    """Genera lecturas continuas realistas de sensores que se insertan en Neon DB."""
-    time.sleep(1.5)
-    print("\n🌿 [IoT ESP32 Activo] Emulador de telemetría iniciado en segundo plano.")
-    print("📡 Transmitiendo lecturas dinámicas a Neon PostgreSQL cada 4 segundos...\n")
-
-    humedad_actual = 52.0
-    regando = False
-    contador_ciclos = 0
-
-    while True:
-        try:
-            # Simulación del comportamiento físico del suelo
-            if regando:
-                humedad_actual += random.uniform(3.5, 6.0)
-                if humedad_actual >= 74.0:
-                    regando = False
-                    repository.insert_evento_riego(EventoRiegoCreate(
-                        id_actuador="REL-BOM-01",
-                        id_sector=1,
-                        duracion_segundos=18,
-                        volumen_litros_estimado=2.8,
-                        motivo="AUTOMATICO_UMBRAL"
-                    ))
-                    print("💧 [IoT ESP32] Riego terminado. Nivel óptimo alcanzado (74%).")
-            else:
-                humedad_actual -= random.uniform(0.7, 1.6)
-                if humedad_actual <= 32.0:
-                    regando = True
-                    print("⚡ [IoT ESP32] Humedad baja detectada (<=32%). Electrobomba encendida.")
-
-            humedad_actual = max(12.0, min(92.0, humedad_actual))
-            adc_crudo = int((humedad_actual / 100.0) * 4095)
-
-            # Insertar registro en la base de datos Neon
-            lectura = LecturaHumedadCreate(
-                id_sensor="SEN-CAP-S01",
-                id_sector=1,
-                humedad_porcentaje=round(humedad_actual, 1),
-                valor_adc_crudo=adc_crudo
-            )
-            repository.insert_lectura(lectura)
-            print(f"📊 [ESP32 Telemetría] Humedad: {lectura.humedad_porcentaje}% | ADC: {adc_crudo} -> Guardado en Neon")
-
-            # Registrar alerta periódica para probar el sistema de alertas
-            contador_ciclos += 1
-            if contador_ciclos == 25:
-                alerta = AlertaNivelAguaCreate(
-                    id_sector=1,
-                    nivel_detectado="CRITICO_VACIO",
-                    bomba_bloqueada=True,
-                    observacion="Sensor Flotador: Nivel bajo en tanque principal"
-                )
-                repository.insert_alerta(alerta)
-                print("🚨 [Alerta IoT] Alerta de tanque vacío registrada.")
-                contador_ciclos = 0
-
-        except Exception as e:
-            print(f"Aviso en telemetría IoT: {e}")
-
-        time.sleep(4)
-
-
-@app.on_event("startup")
-def on_startup():
-    # Iniciar emulador de telemetría en hilo daemon al arrancar la API
-    # hilo = threading.Thread(target=iniciar_emulador_esp32, daemon=True)
-    # hilo.start()
-    print("Emulador IoT desactivado para recibir datos reales de Wokwi")
 
 
 if __name__ == "__main__":
