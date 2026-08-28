@@ -140,6 +140,19 @@ class ViveroRepository:
                 cur.execute(query, (id_sector, limit))
                 return [dict(row) for row in cur.fetchall()]
 
+    def delete_lectura(self, id_lectura: int) -> Dict[str, Any]:
+        with self.db_manager.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "DELETE FROM lecturas_humedad WHERE id_lectura = %s RETURNING *;",
+                    (id_lectura,)
+                )
+                result = cur.fetchone()
+                if not result:
+                    raise HTTPException(status_code=404, detail=f"Medición con id {id_lectura} no encontrada")
+                conn.commit()
+                return dict(result)
+
     # --- EVENTOS DE RIEGO ---
     def insert_evento_riego(self, evento: EventoRiegoCreate) -> Dict[str, Any]:
         with self.db_manager.get_connection() as conn:
@@ -160,6 +173,19 @@ class ViveroRepository:
                 cur.execute("SELECT * FROM eventos_riego ORDER BY fecha_inicio DESC LIMIT %s;", (limit,))
                 return [dict(row) for row in cur.fetchall()]
 
+    def delete_evento_riego(self, id_evento: int) -> Dict[str, Any]:
+        with self.db_manager.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "DELETE FROM eventos_riego WHERE id_evento = %s RETURNING *;",
+                    (id_evento,)
+                )
+                result = cur.fetchone()
+                if not result:
+                    raise HTTPException(status_code=404, detail=f"Evento de riego con id {id_evento} no encontrado")
+                conn.commit()
+                return dict(result)
+
     # --- ALERTAS NIVEL DE AGUA ---
     def insert_alerta(self, alerta: AlertaNivelAguaCreate) -> Dict[str, Any]:
         with self.db_manager.get_connection() as conn:
@@ -179,6 +205,19 @@ class ViveroRepository:
             with conn.cursor() as cur:
                 cur.execute("SELECT * FROM alertas_nivel_agua ORDER BY fecha_hora DESC LIMIT %s;", (limit,))
                 return [dict(row) for row in cur.fetchall()]
+
+    def delete_alerta(self, id_alerta: int) -> Dict[str, Any]:
+        with self.db_manager.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "DELETE FROM alertas_nivel_agua WHERE id_alerta = %s RETURNING *;",
+                    (id_alerta,)
+                )
+                result = cur.fetchone()
+                if not result:
+                    raise HTTPException(status_code=404, detail=f"Alerta con id {id_alerta} no encontrada")
+                conn.commit()
+                return dict(result)
 
     # --- CONFIGURACIÓN & UMBRALES ---
     def get_umbral_by_sector(self, id_sector: int) -> Optional[Dict[str, Any]]:
@@ -252,6 +291,10 @@ def registrar_medicion(lectura: LecturaHumedadCreate):
 def consultar_mediciones_sector(id_sector: int, limit: int = 50):
     return repository.get_lecturas_by_sector(id_sector, limit)
 
+@app.delete("/api/v1/mediciones/{id_lectura}", tags=["Telemetría ESP32"], dependencies=[Depends(get_api_key)])
+def eliminar_medicion(id_lectura: int):
+    return repository.delete_lectura(id_lectura)
+
 # Endpoints de Riego
 @app.post("/api/v1/riego/evento", status_code=status.HTTP_201_CREATED, tags=["Control de Riego"], dependencies=[Depends(get_api_key)])
 def registrar_evento_riego(evento: EventoRiegoCreate):
@@ -261,6 +304,10 @@ def registrar_evento_riego(evento: EventoRiegoCreate):
 def listar_eventos_riego(limit: int = 20):
     return repository.get_eventos_riego(limit)
 
+@app.delete("/api/v1/riego/evento/{id_evento}", tags=["Control de Riego"], dependencies=[Depends(get_api_key)])
+def eliminar_evento_riego(id_evento: int):
+    return repository.delete_evento_riego(id_evento)
+
 # Endpoints de Alertas de Nivel de Agua
 @app.post("/api/v1/alertas", status_code=status.HTTP_201_CREATED, tags=["Alertas & Seguridad"], dependencies=[Depends(get_api_key)])
 def registrar_alerta(alerta: AlertaNivelAguaCreate):
@@ -269,6 +316,10 @@ def registrar_alerta(alerta: AlertaNivelAguaCreate):
 @app.get("/api/v1/alertas", tags=["Alertas & Seguridad"], dependencies=[Depends(get_api_key)])
 def listar_alertas(limit: int = 20):
     return repository.get_alertas_recientes(limit)
+
+@app.delete("/api/v1/alertas/{id_alerta}", tags=["Alertas & Seguridad"], dependencies=[Depends(get_api_key)])
+def eliminar_alerta(id_alerta: int):
+    return repository.delete_alerta(id_alerta)
 
 # Endpoints de Umbrales de Riego
 @app.get("/api/v1/umbrales/{id_sector}", tags=["Configuración"], dependencies=[Depends(get_api_key)])
