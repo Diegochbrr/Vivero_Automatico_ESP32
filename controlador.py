@@ -1,8 +1,7 @@
 from datetime import datetime
-from PyQt6.QtCore import QThread, pyqtSignal, Qt
+from PyQt6.QtCore import QThread, pyqtSignal, Qt, QMarginsF
 from PyQt6.QtWidgets import QTableWidgetItem, QFileDialog, QMessageBox, QCheckBox, QWidget, QHBoxLayout
-from PyQt6.QtGui import QTextDocument
-from PyQt6.QtPrintSupport import QPrinter
+from PyQt6.QtGui import QTextDocument, QPdfWriter, QPageSize, QPageLayout
 from modelo import ModeloRiego
 from vista import VistaRiego, DialogoCambiarCuenta
 
@@ -899,290 +898,275 @@ class ControladorRiego:
                                  "❌ No se pudo eliminar ninguna alerta. Verifica la conexión con la API.")
 
     def exportar_reporte(self):
-        """Genera y exporta un informe técnico oficial completo en formato PDF con diseño ejecutivo."""
-        sec_actual = None
-        for s in self.sectores_cache:
-            if s.get("id_sector") == self.sector_activo:
-                sec_actual = s
-                break
+        """Genera y exporta un informe técnico oficial completo en PDF con QPdfWriter nativo (cero cierres)."""
+        try:
+            sec_actual = None
+            for s in self.sectores_cache:
+                if s.get("id_sector") == self.sector_activo:
+                    sec_actual = s
+                    break
 
-        nombre_sec = sec_actual.get("nombre_sector", f"Invernadero {self.sector_activo}") if sec_actual else f"Invernadero {self.sector_activo}"
-        encargado = sec_actual.get("encargado_nombre", "Sin Asignar") if sec_actual else "Sin Asignar"
-        rol_enc = sec_actual.get("encargado_rol", "Agrónomo") if sec_actual else "Agrónomo"
-        correo_enc = sec_actual.get("encargado_correo", "contacto@vivero.com") if sec_actual else "contacto@vivero.com"
-        cultivo = sec_actual.get("tipo_cultivo", "General") if sec_actual else "General"
-        desc_sec = sec_actual.get("descripcion", "Sector de cultivo automatizado con sensores capacitivos y ESP32") if sec_actual else ""
+            nombre_sec = sec_actual.get("nombre_sector", f"Invernadero {self.sector_activo}") if sec_actual else f"Invernadero {self.sector_activo}"
+            encargado = sec_actual.get("encargado_nombre", "Sin Asignar") if sec_actual else "Sin Asignar"
+            rol_enc = sec_actual.get("encargado_rol", "Agrónomo") if sec_actual else "Agrónomo"
+            correo_enc = sec_actual.get("encargado_correo", "contacto@vivero.com") if sec_actual else "contacto@vivero.com"
+            cultivo = sec_actual.get("tipo_cultivo", "General") if sec_actual else "General"
+            desc_sec = sec_actual.get("descripcion", "Sector de cultivo automatizado con sensores capacitivos y ESP32") if sec_actual else ""
 
-        nombre_archivo_sugerido = f"Informe_SmartVivero_Sector_{self.sector_activo}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-        ruta_archivo, _ = QFileDialog.getSaveFileName(
-            self.vista,
-            "Guardar Informe Técnico Oficial",
-            nombre_archivo_sugerido,
-            "Archivos PDF (*.pdf)"
-        )
-        if not ruta_archivo:
-            return
+            nombre_archivo_sugerido = f"Informe_SmartVivero_Sector_{self.sector_activo}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+            ruta_archivo, _ = QFileDialog.getSaveFileName(
+                self.vista,
+                "Guardar Informe Técnico Oficial",
+                nombre_archivo_sugerido,
+                "Archivos PDF (*.pdf)"
+            )
+            if not ruta_archivo:
+                return
 
-        # 1. Obtener Datos del Historial, Alertas y Umbrales
-        datos = self.historial_cache if self.historial_cache else self.modelo.obtener_historial(self.sector_activo)
-        umbral = self.modelo.obtener_umbral(self.sector_activo) or {}
-        alertas = self.alertas_cache if self.alertas_cache else self.modelo.obtener_alertas()
+            # 1. Obtener Datos del Historial, Alertas y Umbrales
+            datos = self.historial_cache if self.historial_cache else self.modelo.obtener_historial(self.sector_activo)
+            umbral = self.modelo.obtener_umbral(self.sector_activo) or {}
+            alertas = self.alertas_cache if self.alertas_cache else self.modelo.obtener_alertas()
 
-        # 2. Datos del Auditor (Usuario en Sesión)
-        auditor_nombre = self.usuario_sesion.get("nombre", "Operador del Sistema")
-        auditor_rol = self.usuario_sesion.get("rol", "OPERADOR")
-        auditor_correo = self.usuario_sesion.get("correo", "usuario@vivero.com")
-        fecha_emision = datetime.now().strftime("%d/%m/%Y %I:%M:%S %p")
+            # 2. Datos del Auditor
+            auditor_nombre = self.usuario_sesion.get("nombre", "Operador del Sistema")
+            auditor_rol = self.usuario_sesion.get("rol", "OPERADOR")
+            auditor_correo = self.usuario_sesion.get("correo", "usuario@vivero.com")
+            fecha_emision = datetime.now().strftime("%d/%m/%Y %I:%M:%S %p")
 
-        # 3. Métricas y Estadísticas de Humedad
-        hum_min_config = float(umbral.get("humedad_min_on", 35.0))
-        hum_max_config = float(umbral.get("humedad_max_off", 70.0))
-        t_max_config = int(umbral.get("tiempo_max_riego_seg", 180))
+            # 3. Métricas y Estadísticas
+            hum_min_config = float(umbral.get("humedad_min_on", 35.0))
+            hum_max_config = float(umbral.get("humedad_max_off", 70.0))
+            t_max_config = int(umbral.get("tiempo_max_riego_seg", 180))
 
-        hum_valores = []
-        for fila in datos:
-            try:
-                h_val = float(str(fila[3]).replace("%", "").strip())
-                hum_valores.append(h_val)
-            except (ValueError, IndexError):
-                pass
+            hum_valores = []
+            for fila in datos:
+                try:
+                    h_val = float(str(fila[3]).replace("%", "").strip())
+                    hum_valores.append(h_val)
+                except (ValueError, IndexError):
+                    pass
 
-        total_muestras = len(datos)
-        hum_promedio = f"{(sum(hum_valores) / len(hum_valores)):.1f}%" if hum_valores else "N/A"
-        hum_minima = f"{min(hum_valores):.1f}%" if hum_valores else "N/A"
-        hum_maxima = f"{max(hum_valores):.1f}%" if hum_valores else "N/A"
-        hum_actual = f"{hum_valores[0]:.1f}%" if hum_valores else "N/A"
+            total_muestras = len(datos)
+            hum_promedio = f"{(sum(hum_valores) / len(hum_valores)):.1f}%" if hum_valores else "N/A"
+            hum_minima = f"{min(hum_valores):.1f}%" if hum_valores else "N/A"
+            hum_maxima = f"{max(hum_valores):.1f}%" if hum_valores else "N/A"
+            hum_actual = f"{hum_valores[0]:.1f}%" if hum_valores else "N/A"
 
-        # 4. Estructura HTML con Estilos Premium
-        html = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="utf-8">
-            <style>
-                body {{ font-family: 'Segoe UI', Arial, sans-serif; color: #1E293B; margin: 15px; line-height: 1.4; }}
-                .header-box {{ background-color: #0F172A; color: white; padding: 16px 20px; border-radius: 8px; margin-bottom: 18px; }}
-                .header-title {{ font-size: 19px; font-weight: bold; color: #38BDF8; margin: 0; }}
-                .header-sub {{ font-size: 11px; color: #94A3B8; margin-top: 3px; }}
-                
-                .info-table {{ width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 11px; }}
-                .info-table td {{ padding: 6px 10px; border: 1px solid #CBD5E1; }}
-                .info-label {{ background-color: #F1F5F9; font-weight: bold; color: #334155; width: 23%; }}
-                .info-value {{ color: #0F172A; }}
-
-                .section-title {{ font-size: 12.5px; font-weight: bold; color: #0F172A; border-bottom: 2px solid #0284C7; padding-bottom: 3px; margin-top: 16px; margin-bottom: 8px; }}
-                
-                .kpi-card {{ background-color: #F8FAFC; border: 1.5px solid #CBD5E1; border-radius: 6px; padding: 8px; text-align: center; }}
-                .kpi-title {{ font-size: 9.5px; font-weight: bold; color: #64748B; text-transform: uppercase; }}
-                .kpi-value {{ font-size: 17px; font-weight: bold; color: #0284C7; margin: 3px 0; }}
-                .kpi-sub {{ font-size: 9px; color: #059669; font-weight: 600; }}
-
-                .data-table {{ width: 100%; border-collapse: collapse; font-size: 10px; margin-bottom: 16px; }}
-                .data-table th {{ background-color: #1E293B; color: #F8FAFC; padding: 6px; text-align: center; border: 1px solid #1E293B; font-weight: bold; }}
-                .data-table td {{ padding: 5px 6px; text-align: center; border: 1px solid #E2E8F0; }}
-                .data-table tr:nth-child(even) {{ background-color: #F8FAFC; }}
-                
-                .signature-table {{ width: 100%; margin-top: 25px; }}
-                .signature-box {{ text-align: center; font-size: 10.5px; color: #334155; padding-top: 30px; border-top: 1px solid #94A3B8; width: 45%; }}
-                .footer-box {{ margin-top: 25px; border-top: 1px solid #CBD5E1; padding-top: 10px; font-size: 9.5px; color: #64748B; }}
-            </style>
-        </head>
-        <body>
-            <!-- Encabezado -->
-            <div class="header-box">
-                <table width="100%">
-                    <tr>
-                        <td>
-                            <div class="header-title">🌱 SmartVivero IoT — Informe Técnico Oficial</div>
-                            <div class="header-sub">SISTEMA AUTOMATIZADO DE TELEMETRÍA ESP32 Y CONTROL DE INVERNADEROS · GRUPO 3</div>
-                        </td>
-                        <td align="right">
-                            <span style="background-color: #064E3B; color: #34D399; padding: 4px 10px; border-radius: 6px; font-size: 10px; font-weight: bold; border: 1px solid #059669;">🟢 SISTEMA EN LÍNEA</span>
-                        </td>
-                    </tr>
-                </table>
-            </div>
-
-            <!-- Ficha Técnica -->
-            <table class="info-table">
+            # 4. Construcción del HTML con formato nativo compatible con QTextDocument
+            html = f"""
+            <table width="100%" cellpadding="10" cellspacing="0" style="background-color: #0F172A; font-family: Arial, sans-serif;">
                 <tr>
-                    <td class="info-label">📍 Sector Auditado:</td>
-                    <td class="info-value"><b>{nombre_sec}</b> (ID: {self.sector_activo})</td>
-                    <td class="info-label">🌱 Tipo de Cultivo:</td>
-                    <td class="info-value"><b>{cultivo}</b></td>
-                </tr>
-                <tr>
-                    <td class="info-label">👨‍🌾 Encargado del Sector:</td>
-                    <td class="info-value">{encargado} ({rol_enc})</td>
-                    <td class="info-label">📧 Correo Encargado:</td>
-                    <td class="info-value">{correo_enc}</td>
-                </tr>
-                <tr>
-                    <td class="info-label">👤 Emitido / Auditado Por:</td>
-                    <td class="info-value"><b>{auditor_nombre}</b> ({auditor_rol})</td>
-                    <td class="info-label">📅 Fecha / Hora de Emisión:</td>
-                    <td class="info-value"><b>{fecha_emision}</b></td>
-                </tr>
-                <tr>
-                    <td class="info-label">📝 Descripción:</td>
-                    <td class="info-value" colspan="3">{desc_sec}</td>
-                </tr>
-            </table>
-
-            <!-- Resumen de KPIs y Parámetros Operativos -->
-            <div class="section-title">📊 Resumen Operativo y Umbrales de Riego</div>
-            <table width="100%" cellspacing="6" style="margin-bottom: 12px;">
-                <tr>
-                    <td width="25%">
-                        <div class="kpi-card">
-                            <div class="kpi-title">Humedad Actual</div>
-                            <div class="kpi-value">{hum_actual}</div>
-                            <div class="kpi-sub">Última lectura en vivo</div>
-                        </div>
+                    <td>
+                        <font size="5" color="#38BDF8"><b>🌱 SmartVivero IoT — Informe Técnico Oficial</b></font><br>
+                        <font size="2" color="#94A3B8">SISTEMA AUTOMATIZADO DE TELEMETRÍA ESP32 Y CONTROL DE CULTIVOS · GRUPO 3</font>
                     </td>
-                    <td width="25%">
-                        <div class="kpi-card">
-                            <div class="kpi-title">Humedad Promedio</div>
-                            <div class="kpi-value">{hum_promedio}</div>
-                            <div class="kpi-sub">Mín: {hum_minima} | Máx: {hum_maxima}</div>
-                        </div>
-                    </td>
-                    <td width="25%">
-                        <div class="kpi-card">
-                            <div class="kpi-title">Umbral de Riego</div>
-                            <div class="kpi-value" style="color: #059669;">{hum_min_config:.1f}% - {hum_max_config:.1f}%</div>
-                            <div class="kpi-sub">Mínimo ON / Máximo OFF</div>
-                        </div>
-                    </td>
-                    <td width="25%">
-                        <div class="kpi-card">
-                            <div class="kpi-title">Tiempo Máx. Riego</div>
-                            <div class="kpi-value" style="color: #D97706;">{t_max_config} seg</div>
-                            <div class="kpi-sub">Protección de bomba</div>
-                        </div>
+                    <td align="right">
+                        <font size="2" color="#34D399"><b>🟢 SISTEMA EN LÍNEA</b></font>
                     </td>
                 </tr>
             </table>
+            <br>
 
-            <!-- Historial de Telemetría -->
-            <div class="section-title">📋 Registro Detallado de Telemetría de Suelo ({total_muestras} muestras totales)</div>
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th width="8%">ID</th>
-                        <th width="22%">Fecha / Hora</th>
-                        <th width="24%">Ubicación / Sector</th>
-                        <th width="16%">Humedad (%)</th>
-                        <th width="14%">Valor ADC</th>
-                        <th width="16%">Sensor</th>
-                    </tr>
-                </thead>
-                <tbody>
-        """
+            <table width="100%" border="1" cellpadding="6" cellspacing="0" style="border-collapse: collapse; font-family: Arial, sans-serif; font-size: 11px; border-color: #CBD5E1;">
+                <tr style="background-color: #F1F5F9;">
+                    <td width="22%"><b>📍 Sector Auditado:</b></td>
+                    <td width="28%">{nombre_sec} (ID: {self.sector_activo})</td>
+                    <td width="22%"><b>🌱 Tipo de Cultivo:</b></td>
+                    <td width="28%">{cultivo}</td>
+                </tr>
+                <tr>
+                    <td><b>👨‍🌾 Responsable Zona:</b></td>
+                    <td>{encargado} ({rol_enc})</td>
+                    <td><b>📧 Contacto Zona:</b></td>
+                    <td>{correo_enc}</td>
+                </tr>
+                <tr style="background-color: #F1F5F9;">
+                    <td><b>👤 Emitido / Auditado Por:</b></td>
+                    <td><b>{auditor_nombre}</b> ({auditor_rol})</td>
+                    <td><b>📅 Fecha / Hora:</b></td>
+                    <td>{fecha_emision}</td>
+                </tr>
+                <tr>
+                    <td><b>📝 Descripción:</b></td>
+                    <td colspan="3">{desc_sec}</td>
+                </tr>
+            </table>
+            <br>
 
-        if datos:
-            for fila in datos[:25]:
-                id_reg = fila[0]
-                fecha_reg = fila[1]
-                ubi_reg = fila[2]
-                hum_reg = str(fila[3])
-                adc_reg = fila[4]
-                sen_reg = fila[5]
-                html += f"""
-                    <tr>
+            <table width="100%" cellpadding="0" cellspacing="0" style="font-family: Arial, sans-serif;">
+                <tr>
+                    <td><font size="3" color="#0F172A"><b>📊 Resumen Operativo y Umbrales de Riego</b></font></td>
+                </tr>
+                <tr>
+                    <td height="2" style="background-color: #0284C7;"></td>
+                </tr>
+            </table>
+            <br>
+
+            <table width="100%" border="1" cellpadding="8" cellspacing="0" style="border-collapse: collapse; text-align: center; font-family: Arial, sans-serif; border-color: #CBD5E1;">
+                <tr style="background-color: #F8FAFC;">
+                    <td width="25%">
+                        <font size="1" color="#64748B"><b>HUMEDAD ACTUAL</b></font><br>
+                        <font size="5" color="#0284C7"><b>{hum_actual}</b></font><br>
+                        <font size="1" color="#059669">Última lectura en vivo</font>
+                    </td>
+                    <td width="25%">
+                        <font size="1" color="#64748B"><b>HUMEDAD PROMEDIO</b></font><br>
+                        <font size="5" color="#0284C7"><b>{hum_promedio}</b></font><br>
+                        <font size="1" color="#64748B">Mín: {hum_minima} | Máx: {hum_maxima}</font>
+                    </td>
+                    <td width="25%">
+                        <font size="1" color="#64748B"><b>UMBRAL DE RIEGO</b></font><br>
+                        <font size="4" color="#059669"><b>{hum_min_config:.1f}% - {hum_max_config:.1f}%</b></font><br>
+                        <font size="1" color="#64748B">Min ON / Max OFF</font>
+                    </td>
+                    <td width="25%">
+                        <font size="1" color="#64748B"><b>TIEMPO MÁX. BOMBA</b></font><br>
+                        <font size="4" color="#D97706"><b>{t_max_config} seg</b></font><br>
+                        <font size="1" color="#64748B">Protección anti-desborde</font>
+                    </td>
+                </tr>
+            </table>
+            <br>
+
+            <table width="100%" cellpadding="0" cellspacing="0" style="font-family: Arial, sans-serif;">
+                <tr>
+                    <td><font size="3" color="#0F172A"><b>📋 Registro Detallado de Telemetría (Muestras Recientes: {total_muestras} totales)</b></font></td>
+                </tr>
+                <tr>
+                    <td height="2" style="background-color: #0284C7;"></td>
+                </tr>
+            </table>
+            <br>
+
+            <table width="100%" border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse; font-family: Arial, sans-serif; font-size: 10px; border-color: #E2E8F0; text-align: center;">
+                <tr style="background-color: #1E293B; color: #FFFFFF;">
+                    <th width="8%">ID</th>
+                    <th width="24%">Fecha / Hora</th>
+                    <th width="24%">Ubicación / Sector</th>
+                    <th width="16%">Humedad (%)</th>
+                    <th width="14%">Valor ADC</th>
+                    <th width="14%">Sensor</th>
+                </tr>
+            """
+
+            if datos:
+                for i, fila in enumerate(datos[:20]):
+                    bg = "#F8FAFC" if i % 2 == 1 else "#FFFFFF"
+                    id_reg = fila[0]
+                    fecha_reg = fila[1]
+                    ubi_reg = fila[2]
+                    hum_reg = str(fila[3])
+                    adc_reg = fila[4]
+                    sen_reg = fila[5]
+                    html += f"""
+                    <tr style="background-color: {bg};">
                         <td><b>#{id_reg}</b></td>
                         <td>{fecha_reg}</td>
                         <td>{ubi_reg}</td>
-                        <td style="font-weight: bold; color: #0284C7;">{hum_reg}</td>
+                        <td><font color="#0284C7"><b>{hum_reg}</b></font></td>
                         <td>{adc_reg}</td>
-                        <td><span style="font-family: monospace; font-size: 9px;">{sen_reg}</span></td>
+                        <td><font face="Courier New">{sen_reg}</font></td>
                     </tr>
-                """
-        else:
-            html += "<tr><td colspan='6' style='text-align: center; color: #64748B;'>No hay registros de telemetría disponibles en este sector.</td></tr>"
+                    """
+            else:
+                html += "<tr><td colspan='6' align='center'><font color='#64748B'>No hay registros de telemetría disponibles en este sector.</font></td></tr>"
 
-        html += f"""
-                </tbody>
+            html += f"""
             </table>
+            <br>
 
-            <!-- Registro de Alertas Críticas -->
-            <div class="section-title">🚨 Registro de Incidentes y Monitoreo de Nivel de Agua</div>
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th width="10%">ID</th>
-                        <th width="24%">Fecha / Hora</th>
-                        <th width="20%">Tipo de Alerta</th>
-                        <th width="20%">Sensor</th>
-                        <th width="26%">Estado / Detalle</th>
-                    </tr>
-                </thead>
-                <tbody>
-        """
+            <table width="100%" cellpadding="0" cellspacing="0" style="font-family: Arial, sans-serif;">
+                <tr>
+                    <td><font size="3" color="#0F172A"><b>🚨 Registro de Incidentes y Monitoreo de Reservorio</b></font></td>
+                </tr>
+                <tr>
+                    <td height="2" style="background-color: #0284C7;"></td>
+                </tr>
+            </table>
+            <br>
 
-        if alertas:
-            for al in alertas[:6]:
-                id_al = al[0]
-                f_al = al[1]
-                t_al = al[2]
-                s_al = al[3]
-                val_al = al[4]
-                est_al = al[5]
-                html += f"""
-                    <tr>
+            <table width="100%" border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse; font-family: Arial, sans-serif; font-size: 10px; border-color: #E2E8F0; text-align: center;">
+                <tr style="background-color: #1E293B; color: #FFFFFF;">
+                    <th width="10%">ID</th>
+                    <th width="24%">Fecha / Hora</th>
+                    <th width="22%">Tipo de Alerta</th>
+                    <th width="20%">Sensor</th>
+                    <th width="24%">Estado / Detalle</th>
+                </tr>
+            """
+
+            if alertas:
+                for i, al in enumerate(alertas[:5]):
+                    bg = "#F8FAFC" if i % 2 == 1 else "#FFFFFF"
+                    id_al = al[0]
+                    f_al = al[1]
+                    t_al = al[2]
+                    s_al = al[3]
+                    val_al = al[4]
+                    est_al = al[5]
+                    html += f"""
+                    <tr style="background-color: {bg};">
                         <td><b>#{id_al}</b></td>
                         <td>{f_al}</td>
-                        <td style="color: #DC2626; font-weight: bold;">{t_al}</td>
+                        <td><font color="#DC2626"><b>{t_al}</b></font></td>
                         <td>{s_al}</td>
                         <td><b>{est_al}</b> ({val_al})</td>
                     </tr>
-                """
-        else:
-            html += "<tr><td colspan='5' style='text-align: center; color: #059669; font-weight: bold;'>🟢 Nivel de reservorio óptimo. Sin alertas críticas registradas.</td></tr>"
+                    """
+            else:
+                html += "<tr><td colspan='5' align='center'><font color='#059669'><b>🟢 Reservorio óptimo. Sin alertas críticas registradas.</b></font></td></tr>"
 
-        html += f"""
-                </tbody>
+            html += f"""
             </table>
+            <br><br>
 
-            <!-- Firmas -->
-            <table class="signature-table">
+            <table width="100%" cellpadding="10" cellspacing="0" style="font-family: Arial, sans-serif; font-size: 11px;">
                 <tr>
-                    <td class="signature-box">
+                    <td width="45%" align="center" style="border-top: 1px solid #94A3B8;">
                         <b>{auditor_nombre}</b><br>
-                        <span style="color: #64748B;">{auditor_rol} — Auditor del Reporte</span><br>
-                        <span style="color: #94A3B8; font-size: 9px;">{auditor_correo}</span>
+                        <font color="#64748B">{auditor_rol} — Auditor del Reporte</font><br>
+                        <font size="1" color="#94A3B8">{auditor_correo}</font>
                     </td>
                     <td width="10%"></td>
-                    <td class="signature-box">
+                    <td width="45%" align="center" style="border-top: 1px solid #94A3B8;">
                         <b>{encargado}</b><br>
-                        <span style="color: #64748B;">{rol_enc} — Responsable de Zona</span><br>
-                        <span style="color: #94A3B8; font-size: 9px;">{correo_enc}</span>
+                        <font color="#64748B">{rol_enc} — Responsable del Sector</font><br>
+                        <font size="1" color="#94A3B8">{correo_enc}</font>
                     </td>
                 </tr>
             </table>
+            <br>
 
-            <!-- Pie de Página -->
-            <div class="footer-box">
-                <table width="100%">
-                    <tr>
-                        <td>
-                            <b>SmartVivero Cloud Engine</b> · Base de Datos Neon PostgreSQL · ESP32 MicroPython<br>
-                            <i>Desarrollado por <b>GRUPO 3</b> · Ingeniería de Software y Sistemas IoT</i>
-                        </td>
-                        <td align="right">
-                            Documento Oficial de Auditoría Técnica
-                        </td>
-                    </tr>
-                </table>
-            </div>
-        </body>
-        </html>
-        """
+            <table width="100%" cellpadding="6" cellspacing="0" style="border-top: 1px solid #CBD5E1; font-family: Arial, sans-serif; font-size: 9px; color: #64748B;">
+                <tr>
+                    <td>
+                        <b>SmartVivero Cloud Engine</b> · Base de Datos Neon PostgreSQL · ESP32 MicroPython<br>
+                        <i>Desarrollado y certificado por <b>GRUPO 3</b> · Ingeniería de Software y Sistemas IoT</i>
+                    </td>
+                    <td align="right">
+                        Documento Oficial de Auditoría Técnica
+                    </td>
+                </tr>
+            </table>
+            """
 
-        doc = QTextDocument()
-        doc.setHtml(html)
-        printer = QPrinter(QPrinter.PrinterMode.HighResolution)
-        printer.setOutputFormat(QPrinter.OutputFormat.PdfFormat)
-        printer.setOutputFileName(ruta_archivo)
-        doc.print(printer)
-        QMessageBox.information(self.vista, "Reporte Generado Exitosamente", f"📄 El Informe Técnico Oficial del {nombre_sec} ha sido exportado en PDF correctamente.")
+            # 5. Generar PDF usando QPdfWriter nativo
+            doc = QTextDocument()
+            doc.setHtml(html)
+
+            writer = QPdfWriter(ruta_archivo)
+            writer.setPageSize(QPageSize(QPageSize.PageSizeId.A4))
+            writer.setPageOrientation(QPageLayout.Orientation.Portrait)
+            writer.setPageMargins(QMarginsF(15, 15, 15, 15), QPageLayout.Unit.Millimeter)
+            
+            doc.print(writer)
+            QMessageBox.information(
+                self.vista,
+                "Reporte Generado Exitosamente",
+                f"📄 El Informe Técnico Oficial del {nombre_sec} ha sido exportado en PDF correctamente:\n\n{ruta_archivo}"
+            )
+        except Exception as e:
+            print(f"Error generando PDF: {e}")
+            QMessageBox.critical(self.vista, "Error al Exportar PDF", f"❌ Ocurrió un error al generar el PDF:\n{str(e)}")
