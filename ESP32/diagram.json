@@ -9,7 +9,7 @@
     { "type": "wokwi-slide-switch", "id": "sw_nivel", "top": 160, "left": 160, "attrs": {} },
     { "type": "wokwi-led", "id": "led_bomba", "top": -100, "left": -100, "attrs": { "color": "green" } },
     { "type": "wokwi-led", "id": "led_alerta", "top": -100, "left": -40, "attrs": { "color": "red" } },
-    { "type": "wokwi-pushbutton", "id": "btn_manual", "top": 160, "left": 10, "attrs": { "color": "blue" } }
+    { "type": "wokwi-pushbutton", "id": "btn_manual", "top": 240, "left": 80, "attrs": { "color": "blue" } }
   ],
   "connections": [
     [ "esp:GND.1", "lcd:GND", "black", [] ],
@@ -25,8 +25,8 @@
     [ "esp:GND.1", "led_bomba:C", "black", [] ],
     [ "esp:D4", "led_alerta:A", "red", [] ],
     [ "esp:GND.1", "led_alerta:C", "black", [] ],
-    [ "esp:D19", "btn_manual:2.1", "cyan", [] ],
-    [ "esp:GND.2", "btn_manual:1.1", "black", [] ]
+    [ "esp:D19", "btn_manual:1.l", "cyan", [] ],
+    [ "esp:GND.2", "btn_manual:2.l", "black", [] ]
   ],
   "dependencies": {}
 }
