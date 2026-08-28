@@ -24,11 +24,13 @@ class ModeloRiego:
                 # ["ID", "Fecha/Hora", "Ubicación", "Humedad", "Valor ADC", "Sensor"]
                 filas = []
                 for d in datos:
+                    fh_raw = str(d.get("fecha_hora", "")).replace("T", " ")
+                    fh_limpia = fh_raw.split('.')[0].split('+')[0].strip()
                     filas.append((
                         d.get("id_lectura", ""),
-                        str(d.get("fecha_hora", "")).replace("T", " "),
+                        fh_limpia,
                         "Invernadero 1", 
-                        d.get("humedad_porcentaje", 0),
+                        f"{float(d.get('humedad_porcentaje', 0)):.1f}%",
                         d.get("valor_adc_crudo", 0),
                         d.get("id_sensor", "")
                     ))
@@ -98,8 +100,10 @@ class ModeloRiego:
                 # Formato tabla alertas: ["Hora", "Tipo", "Sensor", "Valor", "Estado"]
                 filas = []
                 for d in datos:
+                    fh_raw = str(d.get("fecha_hora", "")).replace("T", " ")
+                    fh_limpia = fh_raw.split('.')[0].split('+')[0].strip()
                     filas.append((
-                        str(d.get("fecha_hora", "")).replace("T", " "),
+                        fh_limpia,
                         "CRÍTICO",
                         "Sensor Flotador",
                         d.get("nivel_detectado", ""),

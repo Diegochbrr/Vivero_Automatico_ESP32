@@ -13,8 +13,9 @@ from PyQt6.QtCore import Qt, QPropertyAnimation, QEasingCurve
 # =============================================================================
 
 CSS_OSCURO = """
-    QMainWindow, QWidget { background-color: #0B1120; }
-    QLabel { color: #E2EAF4; font-family: 'Segoe UI', Arial; font-size: 13px; }
+    QMainWindow { background-color: #0B1120; }
+    QWidget { background-color: transparent; }
+    QLabel { background: transparent; color: #E2EAF4; font-family: 'Segoe UI', Arial; font-size: 13px; border: none; }
 
     QFrame#sidebar {
         background-color: #141E2E;
@@ -79,7 +80,8 @@ CSS_OSCURO = """
     QPushButton.btn_toggle:hover { background-color: #243450; color: #E2EAF4; }
 
     QTableWidget {
-        background-color: #162032; color: #CBD5E1;
+        background-color: #162032; color: #E2EAF4;
+        font-size: 13px; font-family: 'Segoe UI', Arial;
         border-radius: 8px; border: 1px solid #1E3048;
         gridline-color: #1E3048;
         selection-background-color: #0EA5E9;
@@ -88,11 +90,11 @@ CSS_OSCURO = """
     }
     QHeaderView::section {
         background-color: #0B1120; color: #56CFE1;
-        font-weight: 700; font-size: 12px;
+        font-weight: 700; font-size: 12.5px;
         border: none; border-bottom: 2px solid #1E3048;
-        padding: 10px 8px;
+        padding: 9px 6px;
     }
-    QTableWidget::item { padding: 6px 8px; border: none; }
+    QTableWidget::item { padding: 6px 6px; border: none; }
     QTableWidget::item:selected { background-color: #0EA5E9; color: white; }
 
     QLineEdit, QSpinBox {
@@ -128,11 +130,21 @@ CSS_OSCURO = """
     }
     QScrollBar::handle:vertical:hover { background: #0EA5E9; }
     QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
+
+    QScrollBar:horizontal {
+        background: #0B1120; height: 8px; border-radius: 4px;
+    }
+    QScrollBar::handle:horizontal {
+        background: #1E3048; border-radius: 4px; min-width: 30px;
+    }
+    QScrollBar::handle:horizontal:hover { background: #0EA5E9; }
+    QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }
 """
 
 CSS_CLARO = """
-    QMainWindow, QWidget { background-color: #F0F4F8; }
-    QLabel { color: #1E2D3D; font-family: 'Segoe UI', Arial; font-size: 13px; }
+    QMainWindow { background-color: #F0F4F8; }
+    QWidget { background-color: transparent; }
+    QLabel { background: transparent; color: #1E2D3D; font-family: 'Segoe UI', Arial; font-size: 13px; border: none; }
 
     QFrame#sidebar {
         background-color: #FFFFFF;
@@ -197,6 +209,7 @@ CSS_CLARO = """
 
     QTableWidget {
         background-color: #FFFFFF; color: #1E2D3D;
+        font-size: 13px; font-family: 'Segoe UI', Arial;
         border-radius: 8px; border: 1px solid #DDE6EF;
         gridline-color: #EFF2F5;
         selection-background-color: #0EA5E9;
@@ -205,11 +218,11 @@ CSS_CLARO = """
     }
     QHeaderView::section {
         background-color: #EBF4FF; color: #0369A1;
-        font-weight: 700; font-size: 12px;
+        font-weight: 700; font-size: 12.5px;
         border: none; border-bottom: 2px solid #DDE6EF;
-        padding: 10px 8px;
+        padding: 9px 6px;
     }
-    QTableWidget::item { padding: 6px 8px; border: none; }
+    QTableWidget::item { padding: 6px 6px; border: none; }
     QTableWidget::item:selected { background-color: #0EA5E9; color: white; }
 
     QLineEdit, QSpinBox {
@@ -245,6 +258,15 @@ CSS_CLARO = """
     }
     QScrollBar::handle:vertical:hover { background: #0EA5E9; }
     QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
+
+    QScrollBar:horizontal {
+        background: #F0F4F8; height: 8px; border-radius: 4px;
+    }
+    QScrollBar::handle:horizontal {
+        background: #CBD5E1; border-radius: 4px; min-width: 30px;
+    }
+    QScrollBar::handle:horizontal:hover { background: #0EA5E9; }
+    QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }
 """
 
 # Estilos para widgets individuales según tema
@@ -278,9 +300,8 @@ class LienzoGrafica(FigureCanvasQTAgg):
     def __init__(self, parent=None, width=5, height=4, dpi=100):
         fig = Figure(figsize=(width, height), dpi=dpi)
         fig.patch.set_facecolor('#0B1120')
-        # Dos subgráficas apiladas con eje X compartido
-        self.axes, self.axes2 = fig.subplots(2, 1, sharex=True)
-        fig.subplots_adjust(hspace=0.38, left=0.10, right=0.97, top=0.90, bottom=0.14)
+        self.axes, self.axes2 = fig.subplots(2, 1)
+        fig.subplots_adjust(hspace=0.48, left=0.08, right=0.98, top=0.92, bottom=0.14)
         for ax in [self.axes, self.axes2]:
             ax.set_facecolor('#162032')
             ax.tick_params(colors='#CBD5E1')
@@ -528,10 +549,15 @@ class VistaRiego(QMainWindow):
         v_alertas.addWidget(self.txt_buscar_alertas)
 
         self.tabla_alertas = QTableWidget(0, 5)
-        self.tabla_alertas.setHorizontalHeaderLabels(["Hora", "Tipo", "Sensor", "Valor", "Estado"])
-        self.tabla_alertas.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.tabla_alertas.setHorizontalHeaderLabels(["Fecha / Hora", "Tipo", "Sensor", "Valor", "Estado"])
+        self.tabla_alertas.setTextElideMode(Qt.TextElideMode.ElideNone)
+        self.tabla_alertas.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        header_alertas = self.tabla_alertas.horizontalHeader()
+        header_alertas.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        header_alertas.setStretchLastSection(True)
         self.tabla_alertas.setAlternatingRowColors(True)
         self.tabla_alertas.verticalHeader().setVisible(False)
+        self.tabla_alertas.setShowGrid(True)
         v_alertas.addWidget(self.tabla_alertas)
 
         self.btn_eliminar_alerta = QPushButton("🗑️  Eliminar Seleccionada")
@@ -556,10 +582,15 @@ class VistaRiego(QMainWindow):
 
         self.tabla_historial = QTableWidget(0, 6)
         self.tabla_historial.setHorizontalHeaderLabels(
-            ["ID", "Fecha/Hora", "Ubicación", "Humedad (%)", "Valor ADC", "Sensor"])
-        self.tabla_historial.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+            ["ID", "Fecha / Hora", "Ubicación", "Humedad (%)", "Valor ADC", "Sensor"])
+        self.tabla_historial.setTextElideMode(Qt.TextElideMode.ElideNone)
+        self.tabla_historial.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        header_historial = self.tabla_historial.horizontalHeader()
+        header_historial.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        header_historial.setStretchLastSection(True)
         self.tabla_historial.setAlternatingRowColors(True)
         self.tabla_historial.verticalHeader().setVisible(False)
+        self.tabla_historial.setShowGrid(True)
         v_historial.addWidget(self.tabla_historial)
 
         self.btn_eliminar_medicion = QPushButton("🗑️  Eliminar Seleccionada")
@@ -567,8 +598,8 @@ class VistaRiego(QMainWindow):
         self.btn_eliminar_medicion.setCursor(Qt.CursorShape.PointingHandCursor)
         v_historial.addWidget(self.btn_eliminar_medicion)
 
-        layout_tablas.addWidget(frame_alertas, 4)
-        layout_tablas.addWidget(frame_historial, 6)
+        layout_tablas.addWidget(frame_alertas, 1)
+        layout_tablas.addWidget(frame_historial, 1)
         layout_principal.addLayout(layout_tablas)
         self.paginador.addWidget(page_dash)
 
@@ -697,7 +728,7 @@ class VistaRiego(QMainWindow):
         btn_row.addWidget(self.btn_guardar_params)
         btn_row.addWidget(self.lbl_estado_params)
         btn_row.addStretch()
-        form_layout.addRow(QLabel(""), btn_row)
+        form_layout.addRow("", btn_row)
 
         layout.addWidget(form_frame)
         layout.addStretch()

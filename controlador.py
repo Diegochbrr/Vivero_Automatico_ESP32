@@ -1,4 +1,4 @@
-from PyQt6.QtCore import QThread, pyqtSignal
+from PyQt6.QtCore import QThread, pyqtSignal, Qt
 from PyQt6.QtWidgets import QTableWidgetItem, QFileDialog, QMessageBox
 from PyQt6.QtGui import QTextDocument
 from PyQt6.QtPrintSupport import QPrinter
@@ -75,7 +75,7 @@ class ControladorRiego:
         # 1. Actualizar Tarjetas Modernas con la última lectura
         if historial and len(historial) > 0:
             ultimo = historial[0]
-            humedad = float(ultimo[3])
+            humedad = float(str(ultimo[3]).replace('%', ''))
             adc = int(ultimo[4])
             self.vista.lbl_valor_temp.setText(f"{humedad:.1f} %")
             self.vista.progreso_temp.setValue(int(humedad))
@@ -100,16 +100,30 @@ class ControladorRiego:
         for fila_idx, fila_datos in enumerate(self.historial_cache):
             self.vista.tabla_historial.insertRow(fila_idx)
             for col_idx, dato in enumerate(fila_datos):
-                self.vista.tabla_historial.setItem(fila_idx, col_idx, QTableWidgetItem(str(dato)))
+                item = QTableWidgetItem(str(dato))
+                item.setToolTip(str(dato))
+                # Centrar ID, Humedad y ADC para mayor legibilidad
+                if col_idx in [0, 3, 4]:
+                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.vista.tabla_historial.setItem(fila_idx, col_idx, item)
         
         self.vista.tabla_alertas.setRowCount(0)
         for fila_idx, fila_datos in enumerate(self.alertas_cache):
             self.vista.tabla_alertas.insertRow(fila_idx)
             for col_idx, dato in enumerate(fila_datos):
-                self.vista.tabla_alertas.setItem(fila_idx, col_idx, QTableWidgetItem(str(dato)))
+                item = QTableWidgetItem(str(dato))
+                item.setToolTip(str(dato))
+                # Centrar Tipo, Valor y Estado
+                if col_idx in [1, 3, 4]:
+                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.vista.tabla_alertas.setItem(fila_idx, col_idx, item)
                 
         self.filtrar_tabla_historial(filtro_hist)
         self.filtrar_tabla_alertas(filtro_alert)
+
+        # Ajustar ancho de columnas al contenido completo sin recortar nada
+        self.vista.tabla_historial.resizeColumnsToContents()
+        self.vista.tabla_alertas.resizeColumnsToContents()
         
     def actualizar_grafica_matplotlib(self):
         if not self.historial_cache:
@@ -125,17 +139,29 @@ class ControladorRiego:
         leg_edge = '#1E3048' if oscuro else '#DDE6EF'
         leg_lbl  = '#E2EAF4' if oscuro else '#1E2D3D'
 
+        # Colores diferenciados para Fecha y Hora
+        c_hora   = '#F59E0B' if oscuro else '#D97706'  # Ámbar/Naranja para la Hora
+        c_fecha  = '#38BDF8' if oscuro else '#0284C7'  # Azul Celeste para la Fecha
+
         datos = self.historial_cache[:20][::-1]  # últimas 20 lecturas, orden cronológico
 
-        # Etiquetas del eje X: fecha + hora
-        def fmt(d):
-            partes = str(d[1]).split()
-            if len(partes) > 1:
-                return f"{partes[0]}\n{partes[1][:5]}"
-            return str(d[1])
+        # Extraer fecha (DD/MM/AAAA) y hora (HH:MM:SS)
+        fechas_lista = []
+        horas_lista  = []
+        for d in datos:
+            s = str(d[1]).strip()
+            partes = s.split()
+            f_str, h_str = "", ""
+            if len(partes) >= 2:
+                fp = partes[0].split('-')
+                f_str = f"{fp[2]}/{fp[1]}/{fp[0]}" if len(fp) == 3 else partes[0]
+                h_str = partes[1][:8]
+            elif len(partes) == 1:
+                h_str = partes[0][:8]
+            fechas_lista.append(f_str)
+            horas_lista.append(h_str)
 
-        etiquetas  = [fmt(d) for d in datos]
-        humedades  = [float(d[3]) for d in datos]
+        humedades  = [float(str(d[3]).replace('%', '')) for d in datos]
         adcs       = [int(d[4]) for d in datos]
         indices    = list(range(len(datos)))
 
@@ -149,7 +175,7 @@ class ControladorRiego:
         # ── Subgráfica 1: Humedad ────────────────────────────────────────────
         ax1.plot(indices, humedades, color='#F59E0B', marker='o',
                  linewidth=2.5, markersize=5, label='Humedad (%)', zorder=3)
-        ax1.fill_between(indices, humedades, 0, color='#F59E0B', alpha=0.10)
+        ax1.fill_between(indices, humedades, 0, color='#F59E0B', alpha=0.12)
 
         # Líneas de umbral de riego
         hum_min = self.vista.input_hum_min.value()
@@ -159,12 +185,13 @@ class ControladorRiego:
         ax1.axhline(y=hum_max, color='#10B981', linestyle='--', linewidth=1.5,
                     alpha=0.85, label=f'Umbral máx. OFF = {hum_max}%', zorder=2)
 
-        ax1.set_title('Humedad del Suelo', color=title_c, fontsize=11,
+        ax1.set_title('Humedad del Suelo (%)', color=title_c, fontsize=11,
                       fontweight='bold', pad=6, loc='left')
-        ax1.set_ylabel('Humedad (%)', color=label_c, fontsize=10)
+        ax1.set_ylabel('Humedad (%)', color=label_c, fontsize=9.5)
         ax1.set_ylim(-2, 108)
         ax1.set_xticks(indices)
-        ax1.tick_params(axis='x', colors=tick_c, labelsize=8)
+        ax1.set_xticklabels(horas_lista, rotation=35, ha='right', fontsize=7.5, color=c_hora)
+        ax1.tick_params(axis='x', colors=tick_c)
         ax1.tick_params(axis='y', colors=tick_c, labelsize=9)
         ax1.grid(True, linestyle='--', color=grid_c, alpha=0.55, zorder=0)
         ax1.legend(facecolor=leg_face, edgecolor=leg_edge,
@@ -173,24 +200,40 @@ class ControladorRiego:
         # ── Subgráfica 2: Señal ADC ──────────────────────────────────────────
         ax2.plot(indices, adcs, color='#0EA5E9', marker='s', linestyle='-',
                  linewidth=2, markersize=5, label='ADC Crudo (0-4095)', zorder=3)
-        ax2.fill_between(indices, adcs, 0, color='#0EA5E9', alpha=0.10)
+        ax2.fill_between(indices, adcs, 0, color='#0EA5E9', alpha=0.12)
 
-        ax2.set_title('Señal ADC del Sensor Capacitivo', color=title_c, fontsize=11,
+        ax2.set_title('Señal ADC del Sensor Capacitivo (0-4095)', color=title_c, fontsize=11,
                       fontweight='bold', pad=6, loc='left')
-        ax2.set_ylabel('Valor ADC', color=label_c, fontsize=10)
-        ax2.set_xlabel('Fecha / Hora de lectura', color=label_c, fontsize=10)
+        ax2.set_ylabel('Valor ADC', color=label_c, fontsize=9.5)
         ax2.set_ylim(-50, 4200)
         ax2.set_xticks(indices)
-        ax2.set_xticklabels(etiquetas, rotation=30, ha='right', fontsize=7.5)
+        ax2.set_xticklabels(horas_lista, rotation=35, ha='right', fontsize=7.5, color=c_hora)
         ax2.tick_params(axis='x', colors=tick_c)
         ax2.tick_params(axis='y', colors=tick_c, labelsize=9)
         ax2.grid(True, linestyle='--', color=grid_c, alpha=0.55, zorder=0)
         ax2.legend(facecolor=leg_face, edgecolor=leg_edge,
                    labelcolor=leg_lbl, fontsize=8.5, loc='upper right')
 
-        # Título general de la figura
-        fig.suptitle(f'SmartVivero — Últimas {len(datos)} lecturas · Sector 1',
-                     color=title_c, fontsize=12, fontweight='bold', y=0.97)
+        # ── Mostrar la Fecha SOLO cuando cambia o al inicio (sin saturar) ───
+        ultima_fecha = None
+        fechas_unicas = set(f for f in fechas_lista if f)
+
+        # Si hay cambio de día entre lecturas, marcarlo debajo del punto de cambio
+        for i, fecha in enumerate(fechas_lista):
+            if fecha and fecha != ultima_fecha:
+                # Si hay más de un día en los datos, marcamos el cambio
+                if len(fechas_unicas) > 1:
+                    ax2.text(i, -0.28, f"Fecha: {fecha}", transform=ax2.get_xaxis_transform(),
+                             ha='left', va='top', fontsize=7.5, color=c_fecha, fontweight='bold')
+                ultima_fecha = fecha
+
+        # Título general de la figura con la fecha principal en color destacado
+        fecha_cabecera = f" · Fecha: {fechas_lista[0]}" if fechas_lista and fechas_lista[0] else ""
+        if len(fechas_unicas) > 1:
+            fecha_cabecera = f" · Fechas: {min(fechas_unicas)} a {max(fechas_unicas)}"
+
+        fig.suptitle(f'SmartVivero — Últimas {len(datos)} lecturas · Sector 1{fecha_cabecera}',
+                     color=title_c, fontsize=11.5, fontweight='bold', y=0.98)
 
         self.vista.canvas_grafica.draw()
 
