@@ -1,3 +1,4 @@
+from datetime import datetime
 from PyQt6.QtCore import QThread, pyqtSignal, Qt
 from PyQt6.QtWidgets import QTableWidgetItem, QFileDialog, QMessageBox, QCheckBox, QWidget, QHBoxLayout
 from PyQt6.QtGui import QTextDocument
@@ -898,51 +899,290 @@ class ControladorRiego:
                                  "❌ No se pudo eliminar ninguna alerta. Verifica la conexión con la API.")
 
     def exportar_reporte(self):
-        ruta_archivo, _ = QFileDialog.getSaveFileName(self.vista, "Guardar Reporte", f"Reporte_SmartVivero_Sector{self.sector_activo}.pdf", "PDF Files (*.pdf)")
-        if not ruta_archivo: return 
-        datos = self.historial_cache if self.historial_cache else self.modelo.obtener_historial(self.sector_activo)
-        
-        # Obtener datos del sector activo para la cabecera
+        """Genera y exporta un informe técnico oficial completo en formato PDF con diseño ejecutivo."""
         sec_actual = None
         for s in self.sectores_cache:
             if s.get("id_sector") == self.sector_activo:
                 sec_actual = s
                 break
-        
-        nombre_sec = sec_actual.get("nombre_sector", f"Sector {self.sector_activo}") if sec_actual else f"Sector {self.sector_activo}"
-        encargado = sec_actual.get("encargado_nombre", "Equipo Técnico") if sec_actual else "Equipo Técnico"
+
+        nombre_sec = sec_actual.get("nombre_sector", f"Invernadero {self.sector_activo}") if sec_actual else f"Invernadero {self.sector_activo}"
+        encargado = sec_actual.get("encargado_nombre", "Sin Asignar") if sec_actual else "Sin Asignar"
         rol_enc = sec_actual.get("encargado_rol", "Agrónomo") if sec_actual else "Agrónomo"
         correo_enc = sec_actual.get("encargado_correo", "contacto@vivero.com") if sec_actual else "contacto@vivero.com"
-        cultivo = sec_actual.get("tipo_cultivo", "Cultivo General") if sec_actual else "Cultivo General"
+        cultivo = sec_actual.get("tipo_cultivo", "General") if sec_actual else "General"
+        desc_sec = sec_actual.get("descripcion", "Sector de cultivo automatizado con sensores capacitivos y ESP32") if sec_actual else ""
 
-        html = f"""
-        <h1 style='text-align: center; color: #0F172A; font-family: Arial;'>Reporte Operativo - SmartVivero</h1>
-        <p style='text-align: center; font-family: Arial; color: #0284C7; font-size: 14px;'><b>Área: {nombre_sec} | Cultivo: {cultivo}</b></p>
-        <p style='text-align: center; font-family: Arial; color: #64748B; font-size: 12px;'>
-            <b>👨‍🌾 Encargado del Área:</b> {encargado} ({rol_enc}) &nbsp;|&nbsp; 
-            <b>📧 Contacto:</b> {correo_enc} &nbsp;|&nbsp; 
-            <b>Generado por:</b> {self.usuario_sesion['nombre']}
-        </p>
-        <hr>
-        <table border='1' width='100%' cellspacing='0' cellpadding='8' style='font-family: Arial; border-collapse: collapse; margin-top: 12px;'>
-            <tr style='background-color: #1E293B; color: white;'>
-                <th>ID</th><th>Fecha / Hora</th><th>Ubicación</th><th>Humedad (%)</th><th>Valor ADC</th><th>Sensor</th>
-            </tr>
-        """
+        nombre_archivo_sugerido = f"Informe_SmartVivero_Sector_{self.sector_activo}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+        ruta_archivo, _ = QFileDialog.getSaveFileName(
+            self.vista,
+            "Guardar Informe Técnico Oficial",
+            nombre_archivo_sugerido,
+            "Archivos PDF (*.pdf)"
+        )
+        if not ruta_archivo:
+            return
+
+        # 1. Obtener Datos del Historial, Alertas y Umbrales
+        datos = self.historial_cache if self.historial_cache else self.modelo.obtener_historial(self.sector_activo)
+        umbral = self.modelo.obtener_umbral(self.sector_activo) or {}
+        alertas = self.alertas_cache if self.alertas_cache else self.modelo.obtener_alertas()
+
+        # 2. Datos del Auditor (Usuario en Sesión)
+        auditor_nombre = self.usuario_sesion.get("nombre", "Operador del Sistema")
+        auditor_rol = self.usuario_sesion.get("rol", "OPERADOR")
+        auditor_correo = self.usuario_sesion.get("correo", "usuario@vivero.com")
+        fecha_emision = datetime.now().strftime("%d/%m/%Y %I:%M:%S %p")
+
+        # 3. Métricas y Estadísticas de Humedad
+        hum_min_config = float(umbral.get("humedad_min_on", 35.0))
+        hum_max_config = float(umbral.get("humedad_max_off", 70.0))
+        t_max_config = int(umbral.get("tiempo_max_riego_seg", 180))
+
+        hum_valores = []
         for fila in datos:
-            html += "<tr>" + "".join(f"<td style='text-align: center;'>{d}</td>" for d in fila) + "</tr>"
-        html += """
-        </table>
-        <br><br>
-        <p style='text-align: right; font-family: Arial; font-size: 11px; color: #64748B;'>
-            <i>Documento validado automáticamente por el Sistema Central de Riego SmartVivero IoT.</i>
-        </p>
+            try:
+                h_val = float(str(fila[3]).replace("%", "").strip())
+                hum_valores.append(h_val)
+            except (ValueError, IndexError):
+                pass
+
+        total_muestras = len(datos)
+        hum_promedio = f"{(sum(hum_valores) / len(hum_valores)):.1f}%" if hum_valores else "N/A"
+        hum_minima = f"{min(hum_valores):.1f}%" if hum_valores else "N/A"
+        hum_maxima = f"{max(hum_valores):.1f}%" if hum_valores else "N/A"
+        hum_actual = f"{hum_valores[0]:.1f}%" if hum_valores else "N/A"
+
+        # 4. Estructura HTML con Estilos Premium
+        html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <style>
+                body {{ font-family: 'Segoe UI', Arial, sans-serif; color: #1E293B; margin: 15px; line-height: 1.4; }}
+                .header-box {{ background-color: #0F172A; color: white; padding: 16px 20px; border-radius: 8px; margin-bottom: 18px; }}
+                .header-title {{ font-size: 19px; font-weight: bold; color: #38BDF8; margin: 0; }}
+                .header-sub {{ font-size: 11px; color: #94A3B8; margin-top: 3px; }}
+                
+                .info-table {{ width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 11px; }}
+                .info-table td {{ padding: 6px 10px; border: 1px solid #CBD5E1; }}
+                .info-label {{ background-color: #F1F5F9; font-weight: bold; color: #334155; width: 23%; }}
+                .info-value {{ color: #0F172A; }}
+
+                .section-title {{ font-size: 12.5px; font-weight: bold; color: #0F172A; border-bottom: 2px solid #0284C7; padding-bottom: 3px; margin-top: 16px; margin-bottom: 8px; }}
+                
+                .kpi-card {{ background-color: #F8FAFC; border: 1.5px solid #CBD5E1; border-radius: 6px; padding: 8px; text-align: center; }}
+                .kpi-title {{ font-size: 9.5px; font-weight: bold; color: #64748B; text-transform: uppercase; }}
+                .kpi-value {{ font-size: 17px; font-weight: bold; color: #0284C7; margin: 3px 0; }}
+                .kpi-sub {{ font-size: 9px; color: #059669; font-weight: 600; }}
+
+                .data-table {{ width: 100%; border-collapse: collapse; font-size: 10px; margin-bottom: 16px; }}
+                .data-table th {{ background-color: #1E293B; color: #F8FAFC; padding: 6px; text-align: center; border: 1px solid #1E293B; font-weight: bold; }}
+                .data-table td {{ padding: 5px 6px; text-align: center; border: 1px solid #E2E8F0; }}
+                .data-table tr:nth-child(even) {{ background-color: #F8FAFC; }}
+                
+                .signature-table {{ width: 100%; margin-top: 25px; }}
+                .signature-box {{ text-align: center; font-size: 10.5px; color: #334155; padding-top: 30px; border-top: 1px solid #94A3B8; width: 45%; }}
+                .footer-box {{ margin-top: 25px; border-top: 1px solid #CBD5E1; padding-top: 10px; font-size: 9.5px; color: #64748B; }}
+            </style>
+        </head>
+        <body>
+            <!-- Encabezado -->
+            <div class="header-box">
+                <table width="100%">
+                    <tr>
+                        <td>
+                            <div class="header-title">🌱 SmartVivero IoT — Informe Técnico Oficial</div>
+                            <div class="header-sub">SISTEMA AUTOMATIZADO DE TELEMETRÍA ESP32 Y CONTROL DE INVERNADEROS · GRUPO 3</div>
+                        </td>
+                        <td align="right">
+                            <span style="background-color: #064E3B; color: #34D399; padding: 4px 10px; border-radius: 6px; font-size: 10px; font-weight: bold; border: 1px solid #059669;">🟢 SISTEMA EN LÍNEA</span>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+
+            <!-- Ficha Técnica -->
+            <table class="info-table">
+                <tr>
+                    <td class="info-label">📍 Sector Auditado:</td>
+                    <td class="info-value"><b>{nombre_sec}</b> (ID: {self.sector_activo})</td>
+                    <td class="info-label">🌱 Tipo de Cultivo:</td>
+                    <td class="info-value"><b>{cultivo}</b></td>
+                </tr>
+                <tr>
+                    <td class="info-label">👨‍🌾 Encargado del Sector:</td>
+                    <td class="info-value">{encargado} ({rol_enc})</td>
+                    <td class="info-label">📧 Correo Encargado:</td>
+                    <td class="info-value">{correo_enc}</td>
+                </tr>
+                <tr>
+                    <td class="info-label">👤 Emitido / Auditado Por:</td>
+                    <td class="info-value"><b>{auditor_nombre}</b> ({auditor_rol})</td>
+                    <td class="info-label">📅 Fecha / Hora de Emisión:</td>
+                    <td class="info-value"><b>{fecha_emision}</b></td>
+                </tr>
+                <tr>
+                    <td class="info-label">📝 Descripción:</td>
+                    <td class="info-value" colspan="3">{desc_sec}</td>
+                </tr>
+            </table>
+
+            <!-- Resumen de KPIs y Parámetros Operativos -->
+            <div class="section-title">📊 Resumen Operativo y Umbrales de Riego</div>
+            <table width="100%" cellspacing="6" style="margin-bottom: 12px;">
+                <tr>
+                    <td width="25%">
+                        <div class="kpi-card">
+                            <div class="kpi-title">Humedad Actual</div>
+                            <div class="kpi-value">{hum_actual}</div>
+                            <div class="kpi-sub">Última lectura en vivo</div>
+                        </div>
+                    </td>
+                    <td width="25%">
+                        <div class="kpi-card">
+                            <div class="kpi-title">Humedad Promedio</div>
+                            <div class="kpi-value">{hum_promedio}</div>
+                            <div class="kpi-sub">Mín: {hum_minima} | Máx: {hum_maxima}</div>
+                        </div>
+                    </td>
+                    <td width="25%">
+                        <div class="kpi-card">
+                            <div class="kpi-title">Umbral de Riego</div>
+                            <div class="kpi-value" style="color: #059669;">{hum_min_config:.1f}% - {hum_max_config:.1f}%</div>
+                            <div class="kpi-sub">Mínimo ON / Máximo OFF</div>
+                        </div>
+                    </td>
+                    <td width="25%">
+                        <div class="kpi-card">
+                            <div class="kpi-title">Tiempo Máx. Riego</div>
+                            <div class="kpi-value" style="color: #D97706;">{t_max_config} seg</div>
+                            <div class="kpi-sub">Protección de bomba</div>
+                        </div>
+                    </td>
+                </tr>
+            </table>
+
+            <!-- Historial de Telemetría -->
+            <div class="section-title">📋 Registro Detallado de Telemetría de Suelo ({total_muestras} muestras totales)</div>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th width="8%">ID</th>
+                        <th width="22%">Fecha / Hora</th>
+                        <th width="24%">Ubicación / Sector</th>
+                        <th width="16%">Humedad (%)</th>
+                        <th width="14%">Valor ADC</th>
+                        <th width="16%">Sensor</th>
+                    </tr>
+                </thead>
+                <tbody>
         """
-        
+
+        if datos:
+            for fila in datos[:25]:
+                id_reg = fila[0]
+                fecha_reg = fila[1]
+                ubi_reg = fila[2]
+                hum_reg = str(fila[3])
+                adc_reg = fila[4]
+                sen_reg = fila[5]
+                html += f"""
+                    <tr>
+                        <td><b>#{id_reg}</b></td>
+                        <td>{fecha_reg}</td>
+                        <td>{ubi_reg}</td>
+                        <td style="font-weight: bold; color: #0284C7;">{hum_reg}</td>
+                        <td>{adc_reg}</td>
+                        <td><span style="font-family: monospace; font-size: 9px;">{sen_reg}</span></td>
+                    </tr>
+                """
+        else:
+            html += "<tr><td colspan='6' style='text-align: center; color: #64748B;'>No hay registros de telemetría disponibles en este sector.</td></tr>"
+
+        html += f"""
+                </tbody>
+            </table>
+
+            <!-- Registro de Alertas Críticas -->
+            <div class="section-title">🚨 Registro de Incidentes y Monitoreo de Nivel de Agua</div>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th width="10%">ID</th>
+                        <th width="24%">Fecha / Hora</th>
+                        <th width="20%">Tipo de Alerta</th>
+                        <th width="20%">Sensor</th>
+                        <th width="26%">Estado / Detalle</th>
+                    </tr>
+                </thead>
+                <tbody>
+        """
+
+        if alertas:
+            for al in alertas[:6]:
+                id_al = al[0]
+                f_al = al[1]
+                t_al = al[2]
+                s_al = al[3]
+                val_al = al[4]
+                est_al = al[5]
+                html += f"""
+                    <tr>
+                        <td><b>#{id_al}</b></td>
+                        <td>{f_al}</td>
+                        <td style="color: #DC2626; font-weight: bold;">{t_al}</td>
+                        <td>{s_al}</td>
+                        <td><b>{est_al}</b> ({val_al})</td>
+                    </tr>
+                """
+        else:
+            html += "<tr><td colspan='5' style='text-align: center; color: #059669; font-weight: bold;'>🟢 Nivel de reservorio óptimo. Sin alertas críticas registradas.</td></tr>"
+
+        html += f"""
+                </tbody>
+            </table>
+
+            <!-- Firmas -->
+            <table class="signature-table">
+                <tr>
+                    <td class="signature-box">
+                        <b>{auditor_nombre}</b><br>
+                        <span style="color: #64748B;">{auditor_rol} — Auditor del Reporte</span><br>
+                        <span style="color: #94A3B8; font-size: 9px;">{auditor_correo}</span>
+                    </td>
+                    <td width="10%"></td>
+                    <td class="signature-box">
+                        <b>{encargado}</b><br>
+                        <span style="color: #64748B;">{rol_enc} — Responsable de Zona</span><br>
+                        <span style="color: #94A3B8; font-size: 9px;">{correo_enc}</span>
+                    </td>
+                </tr>
+            </table>
+
+            <!-- Pie de Página -->
+            <div class="footer-box">
+                <table width="100%">
+                    <tr>
+                        <td>
+                            <b>SmartVivero Cloud Engine</b> · Base de Datos Neon PostgreSQL · ESP32 MicroPython<br>
+                            <i>Desarrollado por <b>GRUPO 3</b> · Ingeniería de Software y Sistemas IoT</i>
+                        </td>
+                        <td align="right">
+                            Documento Oficial de Auditoría Técnica
+                        </td>
+                    </tr>
+                </table>
+            </div>
+        </body>
+        </html>
+        """
+
         doc = QTextDocument()
         doc.setHtml(html)
         printer = QPrinter(QPrinter.PrinterMode.HighResolution)
         printer.setOutputFormat(QPrinter.OutputFormat.PdfFormat)
         printer.setOutputFileName(ruta_archivo)
         doc.print(printer)
-        QMessageBox.information(self.vista, "Reporte Exitoso", f"📄 El documento PDF del {nombre_sec} ha sido generado y guardado en tu equipo.")
+        QMessageBox.information(self.vista, "Reporte Generado Exitosamente", f"📄 El Informe Técnico Oficial del {nombre_sec} ha sido exportado en PDF correctamente.")
