@@ -64,6 +64,51 @@ class UmbralUpdate(BaseModel):
     id_usuario_modifica: int = Field(..., example=1)
 
 
+# --- DTOs SECTORES Y ENCARGADOS ---
+class SectorResponse(BaseModel):
+    id_sector: int
+    nombre_sector: str
+    encargado_nombre: str
+    encargado_correo: str
+    encargado_rol: str
+    tipo_cultivo: str
+    descripcion: Optional[str] = ""
+
+class SectorUpdate(BaseModel):
+    nombre_sector: str = Field(..., example="Invernadero 1 (Principal)")
+    encargado_nombre: str = Field(..., example="Diego Charry")
+    encargado_correo: str = Field(..., example="diego.charry@vivero.com")
+    encargado_rol: str = Field(..., example="Administrador General")
+    tipo_cultivo: str = Field(..., example="Orquídeas y Suculentas")
+    descripcion: Optional[str] = Field(default="", example="Zona de cultivo automatizado")
+
+
+# --- DTOs USUARIOS Y ROLES ---
+class UsuarioCreate(BaseModel):
+    nombre: str = Field(..., example="Diego Charry")
+    correo: str = Field(..., example="diego.charry@vivero.com")
+    contrasena: str = Field(..., example="admin123")
+    rol: str = Field(default="OPERADOR", example="ADMINISTRADOR")
+
+class UsuarioUpdate(BaseModel):
+    nombre: str
+    correo: str
+    rol: str
+    activo: bool = True
+
+class UsuarioResponse(BaseModel):
+    id_usuario: int
+    nombre: str
+    correo: str
+    rol: str
+    activo: bool
+    creado_en: Optional[Any] = None
+
+class LoginRequest(BaseModel):
+    correo: str
+    contrasena: str
+
+
 # Estado en memoria de comandos pendientes por sector (no requiere tabla extra en BD)
 # { id_sector: {"forzar_riego": bool, "duracion_seg": int} }
 _comandos_pendientes: Dict[int, Dict[str, Any]] = {}
@@ -118,6 +163,86 @@ class ViveroRepository:
     """Repositorio con operaciones CRUD sobre las entidades del Vivero."""
     def __init__(self, db_manager: DatabaseManager):
         self.db_manager = db_manager
+        self.init_db()
+
+    def init_db(self):
+        """Inicializa las tablas necesarias e inserta datos semilla si no existen."""
+        try:
+            with self.db_manager.get_connection() as conn:
+                with conn.cursor() as cur:
+                    # 1. Tabla Usuarios
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS usuarios (
+                            id_usuario SERIAL PRIMARY KEY,
+                            nombre VARCHAR(100) NOT NULL,
+                            correo VARCHAR(150) UNIQUE NOT NULL,
+                            contrasena_hash VARCHAR(255) NOT NULL,
+                            rol VARCHAR(50) DEFAULT 'OPERADOR',
+                            activo BOOLEAN DEFAULT TRUE,
+                            creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        );
+                    """)
+
+                    # 2. Tabla Sectores y Encargados
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS sectores (
+                            id_sector INT PRIMARY KEY,
+                            nombre_sector VARCHAR(100) NOT NULL,
+                            encargado_nombre VARCHAR(100) NOT NULL,
+                            encargado_correo VARCHAR(150) NOT NULL,
+                            encargado_rol VARCHAR(50) NOT NULL,
+                            tipo_cultivo VARCHAR(100) NOT NULL,
+                            descripcion TEXT DEFAULT ''
+                        );
+                    """)
+
+                    # 3. Semilla/Sincronización de los 5 Usuarios del Grupo 3
+                    cur.execute("""
+                        INSERT INTO usuarios (nombre, correo, contrasena_hash, rol, activo) VALUES
+                        ('Diego Charry', 'diego.charry@vivero.com', 'admin123', 'ADMINISTRADOR', TRUE),
+                        ('Angel Villalobos', 'angel.villalobos@vivero.com', 'admin123', 'AGRONOMO', TRUE),
+                        ('Adelfo Freyle', 'adelfo.freyle@vivero.com', 'admin123', 'OPERADOR', TRUE),
+                        ('Juan Quintero', 'juan.quintero@vivero.com', 'admin123', 'TECNICO_IOT', TRUE),
+                        ('Juan Figueroa', 'juan.figueroa@vivero.com', 'admin123', 'VISUALIZADOR', TRUE)
+                        ON CONFLICT (correo) DO UPDATE SET
+                            nombre = EXCLUDED.nombre,
+                            contrasena_hash = EXCLUDED.contrasena_hash,
+                            rol = EXCLUDED.rol,
+                            activo = TRUE;
+                    """)
+
+                    # 4. Semilla/Sincronización de Sectores asignados al equipo
+                    cur.execute("""
+                        INSERT INTO sectores (id_sector, nombre_sector, encargado_nombre, encargado_correo, encargado_rol, tipo_cultivo, descripcion) VALUES
+                        (1, 'Invernadero 1 (Principal)', 'Diego Charry', 'diego.charry@vivero.com', 'Administrador General', 'Orquídeas y Suculentas', 'Sector de telemetría IoT ESP32 automatizado'),
+                        (2, 'Invernadero 2 (Cultivo Agrónomo)', 'Angel Villalobos', 'angel.villalobos@vivero.com', 'Ingeniero Agrónomo', 'Hortalizas y Tomates', 'Monitoreo de suelo y fertilización'),
+                        (3, 'Invernadero 3 (Riego Automatizado)', 'Adelfo Freyle', 'adelfo.freyle@vivero.com', 'Operador de Riego', 'Semilleros y Flores', 'Área de aspersión y control de humedad'),
+                        (4, 'Invernadero 4 (Laboratorio IoT)', 'Juan Quintero', 'juan.quintero@vivero.com', 'Técnico en Sistemas IoT', 'Cultivo Experimental', 'Banco de pruebas de sensores y actuadores ESP32'),
+                        (5, 'Invernadero 5 (Supervisión)', 'Juan Figueroa', 'juan.figueroa@vivero.com', 'Monitor y Visualizador', 'Plantas Ornamentales', 'Supervisión y control de calidad')
+                        ON CONFLICT (id_sector) DO UPDATE SET
+                            nombre_sector = EXCLUDED.nombre_sector,
+                            encargado_nombre = EXCLUDED.encargado_nombre,
+                            encargado_correo = EXCLUDED.encargado_correo,
+                            encargado_rol = EXCLUDED.encargado_rol,
+                            tipo_cultivo = EXCLUDED.tipo_cultivo,
+                            descripcion = EXCLUDED.descripcion;
+                    """)
+
+                    # 5. Asegurar umbrales para sectores 1 a 5
+                    cur.execute("""
+                        INSERT INTO umbrales_configuracion (id_sector, humedad_min_on, humedad_max_off, tiempo_max_riego_seg, id_usuario_modifica)
+                        VALUES 
+                            (1, 35.0, 70.0, 180, 1),
+                            (2, 40.0, 75.0, 150, 1),
+                            (3, 45.0, 80.0, 200, 1),
+                            (4, 30.0, 65.0, 120, 1),
+                            (5, 38.0, 72.0, 160, 1)
+                        ON CONFLICT (id_sector) DO NOTHING;
+                    """)
+
+                    conn.commit()
+        except Exception as e:
+            print(f"⚠️ Advertencia en init_db: {e}")
 
     # --- LECTURAS HUMEDAD ---
     def insert_lectura(self, lectura: LecturaHumedadCreate) -> Dict[str, Any]:
@@ -273,6 +398,102 @@ class ViveroRepository:
         _comandos_pendientes.pop(id_sector, None)
         return {"mensaje": f"Comando de riego forzado limpiado para sector {id_sector}"}
 
+    # --- GESTIÓN DE SECTORES ---
+    def get_sectores(self) -> List[Dict[str, Any]]:
+        with self.db_manager.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT * FROM sectores ORDER BY id_sector ASC;")
+                return [dict(row) for row in cur.fetchall()]
+
+    def get_sector_by_id(self, id_sector: int) -> Optional[Dict[str, Any]]:
+        with self.db_manager.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT * FROM sectores WHERE id_sector = %s;", (id_sector,))
+                res = cur.fetchone()
+                return dict(res) if res else None
+
+    def update_sector(self, id_sector: int, sector: SectorUpdate) -> Dict[str, Any]:
+        with self.db_manager.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO sectores (id_sector, nombre_sector, encargado_nombre, encargado_correo, encargado_rol, tipo_cultivo, descripcion)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (id_sector) DO UPDATE SET
+                        nombre_sector = EXCLUDED.nombre_sector,
+                        encargado_nombre = EXCLUDED.encargado_nombre,
+                        encargado_correo = EXCLUDED.encargado_correo,
+                        encargado_rol = EXCLUDED.encargado_rol,
+                        tipo_cultivo = EXCLUDED.tipo_cultivo,
+                        descripcion = EXCLUDED.descripcion
+                    RETURNING *;
+                """, (id_sector, sector.nombre_sector, sector.encargado_nombre, sector.encargado_correo, sector.encargado_rol, sector.tipo_cultivo, sector.descripcion))
+                res = cur.fetchone()
+                conn.commit()
+                return dict(res)
+
+    # --- GESTIÓN DE USUARIOS ---
+    def get_usuarios(self) -> List[Dict[str, Any]]:
+        with self.db_manager.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT id_usuario, nombre, correo, rol, activo, creado_en FROM usuarios ORDER BY id_usuario ASC;")
+                return [dict(row) for row in cur.fetchall()]
+
+    def create_usuario(self, user: UsuarioCreate) -> Dict[str, Any]:
+        with self.db_manager.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT id_usuario FROM usuarios WHERE correo = %s;", (user.correo,))
+                if cur.fetchone():
+                    raise HTTPException(status_code=400, detail="El correo ya se encuentra registrado.")
+                cur.execute("""
+                    INSERT INTO usuarios (nombre, correo, contrasena_hash, rol, activo)
+                    VALUES (%s, %s, %s, %s, TRUE)
+                    RETURNING id_usuario, nombre, correo, rol, activo, creado_en;
+                """, (user.nombre, user.correo, user.contrasena, user.rol.upper()))
+                res = cur.fetchone()
+                conn.commit()
+                return dict(res)
+
+    def update_usuario(self, id_usuario: int, user: UsuarioUpdate) -> Dict[str, Any]:
+        with self.db_manager.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    UPDATE usuarios
+                    SET nombre = %s, correo = %s, rol = %s, activo = %s
+                    WHERE id_usuario = %s
+                    RETURNING id_usuario, nombre, correo, rol, activo, creado_en;
+                """, (user.nombre, user.correo, user.rol.upper(), user.activo, id_usuario))
+                res = cur.fetchone()
+                if not res:
+                    raise HTTPException(status_code=404, detail="Usuario no encontrado.")
+                conn.commit()
+                return dict(res)
+
+    def delete_usuario(self, id_usuario: int) -> Dict[str, Any]:
+        with self.db_manager.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM usuarios WHERE id_usuario = %s RETURNING id_usuario, nombre, correo;", (id_usuario,))
+                res = cur.fetchone()
+                if not res:
+                    raise HTTPException(status_code=404, detail="Usuario no encontrado.")
+                conn.commit()
+                return dict(res)
+
+    def authenticate_user(self, correo: str, contrasena: str) -> Dict[str, Any]:
+        with self.db_manager.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT id_usuario, nombre, correo, contrasena_hash, rol, activo FROM usuarios WHERE correo = %s;", (correo,))
+                user = cur.fetchone()
+                if not user or user["contrasena_hash"] != contrasena:
+                    raise HTTPException(status_code=401, detail="Credenciales incorrectas.")
+                if not user["activo"]:
+                    raise HTTPException(status_code=403, detail="Cuenta de usuario desactivada.")
+                return {
+                    "id_usuario": user["id_usuario"],
+                    "nombre": user["nombre"],
+                    "correo": user["correo"],
+                    "rol": user["rol"]
+                }
+
 
 # =============================================================================
 # CONTROLADOR Y APLICACIÓN FASTAPI
@@ -391,6 +612,51 @@ def forzar_riego(id_sector: int, duracion_seg: int = 30):
             dependencies=[Depends(get_api_key)])
 def confirmar_riego_forzado(id_sector: int):
     return repository.clear_forzar_riego(id_sector)
+
+
+# =============================================================================
+# ENDPOINTS DE SECTORES Y ENCARGADOS
+# =============================================================================
+
+@app.get("/api/v1/sectores", tags=["Sectores & Encargados"], dependencies=[Depends(get_api_key)])
+def listar_sectores():
+    return repository.get_sectores()
+
+@app.get("/api/v1/sectores/{id_sector}", tags=["Sectores & Encargados"], dependencies=[Depends(get_api_key)])
+def obtener_sector(id_sector: int):
+    sec = repository.get_sector_by_id(id_sector)
+    if not sec:
+        raise HTTPException(status_code=404, detail="Sector no encontrado")
+    return sec
+
+@app.put("/api/v1/sectores/{id_sector}", tags=["Sectores & Encargados"], dependencies=[Depends(get_api_key)])
+def actualizar_sector(id_sector: int, sector: SectorUpdate):
+    return repository.update_sector(id_sector, sector)
+
+
+# =============================================================================
+# ENDPOINTS DE GESTIÓN DE USUARIOS Y ROLES
+# =============================================================================
+
+@app.get("/api/v1/usuarios", tags=["Usuarios & Roles"], dependencies=[Depends(get_api_key)])
+def listar_usuarios():
+    return repository.get_usuarios()
+
+@app.post("/api/v1/usuarios", status_code=status.HTTP_201_CREATED, tags=["Usuarios & Roles"], dependencies=[Depends(get_api_key)])
+def registrar_usuario(user: UsuarioCreate):
+    return repository.create_usuario(user)
+
+@app.put("/api/v1/usuarios/{id_usuario}", tags=["Usuarios & Roles"], dependencies=[Depends(get_api_key)])
+def actualizar_usuario(id_usuario: int, user: UsuarioUpdate):
+    return repository.update_usuario(id_usuario, user)
+
+@app.delete("/api/v1/usuarios/{id_usuario}", tags=["Usuarios & Roles"], dependencies=[Depends(get_api_key)])
+def eliminar_usuario(id_usuario: int):
+    return repository.delete_usuario(id_usuario)
+
+@app.post("/api/v1/auth/login", tags=["Usuarios & Roles"])
+def iniciar_sesion(credenciales: LoginRequest):
+    return repository.authenticate_user(credenciales.correo, credenciales.contrasena)
 
 
 if __name__ == "__main__":

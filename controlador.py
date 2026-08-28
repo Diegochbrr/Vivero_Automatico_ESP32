@@ -3,21 +3,25 @@ from PyQt6.QtWidgets import QTableWidgetItem, QFileDialog, QMessageBox, QCheckBo
 from PyQt6.QtGui import QTextDocument
 from PyQt6.QtPrintSupport import QPrinter
 from modelo import ModeloRiego
-from vista import VistaRiego
+from vista import VistaRiego, DialogoCambiarCuenta
 
 class HiloActualizacionDatos(QThread):
     """Hilo secundario para consultar la API en segundo plano sin congelar la interfaz."""
     datos_obtenidos = pyqtSignal(list, list)  # (historial, alertas)
 
-    def __init__(self, modelo: ModeloRiego, intervalo_segundos: int = 3):
+    def __init__(self, modelo: ModeloRiego, id_sector: int = 1, intervalo_segundos: int = 3):
         super().__init__()
         self.modelo = modelo
+        self.id_sector = id_sector
         self.intervalo = intervalo_segundos
         self._ejecutando = True
 
+    def set_sector(self, id_sector: int):
+        self.id_sector = id_sector
+
     def run(self):
         while self._ejecutando:
-            historial = self.modelo.obtener_historial()
+            historial = self.modelo.obtener_historial(self.id_sector)
             alertas = self.modelo.obtener_alertas()
             self.datos_obtenidos.emit(historial, alertas)
             # Pausa en milisegundos en el hilo secundario
@@ -34,13 +38,28 @@ class ControladorRiego:
         self.modelo = modelo
         self.historial_cache = []
         self.alertas_cache = []
+        self.sectores_cache = []
+        self.usuarios_cache = []
+        self.sector_activo = 1
+        self.usuario_sesion = {
+            "id_usuario": 1,
+            "nombre": "Diego Charry",
+            "correo": "diego.charry@vivero.com",
+            "rol": "ADMINISTRADOR"
+        }
         
         # Conectar botones del Menú Lateral
         self.vista.btn_nav_home.clicked.connect(self.ir_a_home)
         self.vista.btn_nav_graph.clicked.connect(self.ir_a_graficas)
         self.vista.btn_nav_settings.clicked.connect(lambda: self.vista.paginador.setCurrentIndex(2))
+        self.vista.btn_nav_users.clicked.connect(self.ir_a_usuarios)
         self.vista.btn_nav_docs.clicked.connect(self.exportar_reporte)
         
+        # Barra Superior Global: Selector de Sector, Estado de Presencia y Botón de Cuenta
+        self.vista.combo_sector.currentIndexChanged.connect(self.cambiar_sector_activo)
+        self.vista.combo_estado_usuario.currentIndexChanged.connect(self.cambiar_estado_presencia)
+        self.vista.btn_badge_sesion.clicked.connect(self.abrir_dialogo_cambiar_cuenta)
+
         # Botones de Acción
         self.vista.btn_guardar_params.clicked.connect(self.guardar_parametros)
         
@@ -59,10 +78,18 @@ class ControladorRiego:
 
         # Botones de Configuración de Umbrales
         self.vista.btn_cargar_umbral.clicked.connect(self.cargar_umbral)
-        self.vista.btn_guardar_params.clicked.connect(self.guardar_parametros)
+
+        # Botones de Gestión de Usuarios
+        self.vista.btn_guardar_usuario.clicked.connect(self.guardar_nuevo_usuario)
+        self.vista.btn_eliminar_usuario.clicked.connect(self.eliminar_usuario_seleccionado)
+        self.vista.btn_refrescar_usuarios.clicked.connect(self.cargar_tabla_usuarios)
+
+        # Iniciar Carga de Sectores y Usuarios
+        self.cargar_sectores_iniciales()
+        self.cargar_tabla_usuarios()
 
         # Iniciar Hilo en Segundo Plano (Asíncrono - Cero lag en la interfaz)
-        self.hilo = HiloActualizacionDatos(self.modelo, intervalo_segundos=3)
+        self.hilo = HiloActualizacionDatos(self.modelo, id_sector=self.sector_activo, intervalo_segundos=3)
         self.hilo.datos_obtenidos.connect(self.actualizar_interfaz)
         self.hilo.start()
 
@@ -72,6 +99,10 @@ class ControladorRiego:
     def ir_a_graficas(self):
         self.vista.paginador.setCurrentIndex(1)
         self.actualizar_grafica_matplotlib()
+
+    def ir_a_usuarios(self):
+        self.vista.paginador.setCurrentIndex(3)
+        self.cargar_tabla_usuarios()
 
     def actualizar_interfaz(self, historial, alertas):
         self.historial_cache = historial
@@ -266,13 +297,21 @@ class ControladorRiego:
                              ha='left', va='top', fontsize=7.5, color=c_fecha, fontweight='bold')
                 ultima_fecha = fecha
 
-        # Título general de la figura con la fecha principal en color destacado
+        # Título general de la figura con la fecha principal y sector activo
+        nombre_sec = f"Sector {self.sector_activo}"
+        encargado_sec = ""
+        for s in self.sectores_cache:
+            if s.get("id_sector") == self.sector_activo:
+                nombre_sec = s.get("nombre_sector", nombre_sec)
+                encargado_sec = f" · Encargado: {s.get('encargado_nombre', '')}"
+                break
+
         fecha_cabecera = f" · Fecha: {fechas_lista[0]}" if fechas_lista and fechas_lista[0] else ""
         if len(fechas_unicas) > 1:
             fecha_cabecera = f" · Fechas: {min(fechas_unicas)} a {max(fechas_unicas)}"
 
-        fig.suptitle(f'SmartVivero — Últimas {len(datos)} lecturas · Sector 1{fecha_cabecera}',
-                     color=title_c, fontsize=11.5, fontweight='bold', y=0.98)
+        fig.suptitle(f'SmartVivero — Últimas {len(datos)} lecturas · {nombre_sec}{encargado_sec}{fecha_cabecera}',
+                     color=title_c, fontsize=10.5, fontweight='bold', y=0.98)
 
         self.vista.canvas_grafica.draw()
 
@@ -328,7 +367,8 @@ class ControladorRiego:
         self.vista.lbl_estado_params.setText("⏳ Guardando...")
         self.vista.lbl_estado_params.setStyleSheet("color: #38BDF8; font-size: 13px; font-weight: bold;")
 
-        exito = self.modelo.actualizar_umbral(id_sector, hum_min, hum_max, tiempo)
+        id_user = self.usuario_sesion.get("id_usuario", 1)
+        exito = self.modelo.actualizar_umbral(id_sector, hum_min, hum_max, tiempo, id_usuario=id_user)
         if exito:
             self.vista.lbl_estado_params.setText(f"✅ Sector {id_sector} actualizado correctamente.")
             self.vista.lbl_estado_params.setStyleSheet("color: #10B981; font-size: 13px; font-weight: bold;")
@@ -341,15 +381,195 @@ class ControladorRiego:
         duracion = self.vista.spin_duracion_riego.value()
         self.vista.lbl_estado_riego.setText("⏳ Enviando comando...")
         self.vista.lbl_estado_riego.setStyleSheet("color: #38BDF8; font-size: 12px; font-weight: bold; background: transparent;")
-        exito = self.modelo.forzar_riego(id_sector=1, duracion_seg=duracion)
+        exito = self.modelo.forzar_riego(id_sector=self.sector_activo, duracion_seg=duracion)
         if exito:
             self.vista.lbl_estado_riego.setText(
-                f"✅ Comando enviado.\nEl ESP32 regará {duracion}s en su próximo ciclo."
+                f"✅ Comando enviado a Sector {self.sector_activo}.\nEl ESP32 regará {duracion}s en su próximo ciclo."
             )
             self.vista.lbl_estado_riego.setStyleSheet("color: #10B981; font-size: 12px; font-weight: bold; background: transparent;")
         else:
             self.vista.lbl_estado_riego.setText("❌ Error al enviar el comando.\nVerifica la conexión con la API.")
             self.vista.lbl_estado_riego.setStyleSheet("color: #EF4444; font-size: 12px; font-weight: bold; background: transparent;")
+
+    # =========================================================================
+    # GESTIÓN DE SECTORES Y ENCARGADOS
+    # =========================================================================
+
+    def cargar_sectores_iniciales(self):
+        """Carga los sectores desde la API y los agrega al combo de la barra superior permanente."""
+        self.sectores_cache = self.modelo.obtener_sectores()
+        self.vista.combo_sector.blockSignals(True)
+        self.vista.combo_sector.clear()
+        for sec in self.sectores_cache:
+            item_text = f"Sector {sec['id_sector']}: {sec['nombre_sector']}"
+            self.vista.combo_sector.addItem(item_text, sec['id_sector'])
+        self.vista.combo_sector.blockSignals(False)
+        self.actualizar_info_encargado_topbar()
+
+    def cambiar_sector_activo(self, index: int):
+        """Se activa al seleccionar otro sector en el combo de la barra superior."""
+        if index < 0 or index >= len(self.sectores_cache):
+            return
+        sec = self.sectores_cache[index]
+        self.sector_activo = sec["id_sector"]
+        self.hilo.set_sector(self.sector_activo)
+
+        # Actualizar datos del encargado en el header superior
+        self.actualizar_info_encargado_topbar()
+
+        # Sincronizar el selector de sector en la página de parámetros
+        self.vista.spin_sector.setValue(self.sector_activo)
+
+        # Forzar actualización inmediata de telemetría y tablas
+        nuevo_historial = self.modelo.obtener_historial(self.sector_activo)
+        self.actualizar_interfaz(nuevo_historial, self.alertas_cache)
+
+    def actualizar_info_encargado_topbar(self):
+        """Actualiza las etiquetas del miembro encargado en la barra superior fija."""
+        sec_actual = None
+        for s in self.sectores_cache:
+            if s.get("id_sector") == self.sector_activo:
+                sec_actual = s
+                break
+        if sec_actual:
+            nombre = sec_actual.get("encargado_nombre", "Sin Asignar")
+            rol = sec_actual.get("encargado_rol", "Técnico")
+            correo = sec_actual.get("encargado_correo", "contacto@vivero.com")
+            cultivo = sec_actual.get("tipo_cultivo", "General")
+            self.vista.lbl_top_encargado.setText(f"👨‍🌾 Encargado: {nombre} ({rol})")
+            self.vista.lbl_top_correo.setText(f"📧 {correo}  |  🌱 Cultivo: {cultivo}")
+            self.vista.btn_badge_sesion.setText(f"👤  {self.usuario_sesion['nombre']} ({self.usuario_sesion['rol']})  ▾")
+
+    # =========================================================================
+    # CAMBIO DE CUENTA Y AUTENTICACIÓN
+    # =========================================================================
+
+    def abrir_dialogo_cambiar_cuenta(self):
+        """Abre la ventana modal para cambiar de cuenta o autenticarse con contraseña."""
+        if not self.usuarios_cache:
+            self.usuarios_cache = self.modelo.obtener_usuarios()
+
+        dlg = DialogoCambiarCuenta(self.vista, usuarios=self.usuarios_cache, modo_oscuro=self.vista._modo_oscuro)
+
+        def procesar_login():
+            correo = dlg.txt_correo.text().strip()
+            contrasena = dlg.txt_pass.text().strip()
+
+            if contrasena:
+                user_auth = self.modelo.autenticar_usuario(correo, contrasena)
+                if user_auth:
+                    self.establecer_usuario_sesion(user_auth)
+                    dlg.accept()
+                    QMessageBox.information(self.vista, "Sesión Iniciada", f"✅ Bienvenido/a, {user_auth['nombre']}.")
+                else:
+                    dlg.lbl_error.setText("❌ Contraseña o correo incorrectos.")
+            else:
+                perfil = dlg.combo_perfiles.currentData()
+                if perfil:
+                    self.establecer_usuario_sesion(perfil)
+                    dlg.accept()
+                    QMessageBox.information(self.vista, "Cuenta Cambiada", f"👤 Sesión cambiada a: {perfil['nombre']} ({perfil.get('rol', 'OPERADOR')}).")
+                else:
+                    dlg.lbl_error.setText("⚠️ Selecciona un perfil o ingresa tu contraseña.")
+
+        dlg.btn_login.clicked.connect(procesar_login)
+        dlg.exec()
+
+    def establecer_usuario_sesion(self, user: dict):
+        """Actualiza el usuario activo de la sesión y refresca el badge del header."""
+        self.usuario_sesion = {
+            "id_usuario": user.get("id_usuario", 1),
+            "nombre": user.get("nombre", "Usuario"),
+            "correo": user.get("correo", ""),
+            "rol": user.get("rol", "OPERADOR")
+        }
+        self.vista.btn_badge_sesion.setText(f"👤  {self.usuario_sesion['nombre']} ({self.usuario_sesion['rol']})  ▾")
+
+    def cambiar_estado_presencia(self, index: int):
+        """Actualiza los estilos visuales cuando el operador cambia su estado (En Línea, Ausente, En Campo)."""
+        estado_id = self.vista.combo_estado_usuario.currentData()
+        if estado_id:
+            self.vista.actualizar_estilo_estado(estado_id)
+
+    # =========================================================================
+    # GESTIÓN DE PERSONAL Y USUARIOS
+    # =========================================================================
+
+    def cargar_tabla_usuarios(self):
+        """Obtiene la lista de usuarios de la API y puebla la tabla de personal."""
+        self.usuarios_cache = self.modelo.obtener_usuarios()
+        self.vista.tabla_usuarios.setRowCount(0)
+        for fila_idx, u in enumerate(self.usuarios_cache):
+            self.vista.tabla_usuarios.insertRow(fila_idx)
+            id_item = QTableWidgetItem(str(u.get("id_usuario", "")))
+            id_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            nom_item = QTableWidgetItem(str(u.get("nombre", "")))
+            cor_item = QTableWidgetItem(str(u.get("correo", "")))
+            rol_item = QTableWidgetItem(str(u.get("rol", "")))
+            rol_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            est_str = "🟢 Activo" if u.get("activo", True) else "🔴 Inactivo"
+            est_item = QTableWidgetItem(est_str)
+            est_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            f_raw = str(u.get("creado_en", "")).split("T")[0]
+            f_item = QTableWidgetItem(f_raw)
+            f_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+
+            self.vista.tabla_usuarios.setItem(fila_idx, 0, id_item)
+            self.vista.tabla_usuarios.setItem(fila_idx, 1, nom_item)
+            self.vista.tabla_usuarios.setItem(fila_idx, 2, cor_item)
+            self.vista.tabla_usuarios.setItem(fila_idx, 3, rol_item)
+            self.vista.tabla_usuarios.setItem(fila_idx, 4, est_item)
+            self.vista.tabla_usuarios.setItem(fila_idx, 5, f_item)
+
+        self.vista.tabla_usuarios.resizeColumnsToContents()
+
+    def guardar_nuevo_usuario(self):
+        """Registra un nuevo usuario a través de la API."""
+        nom = self.vista.txt_user_nombre.text().strip()
+        cor = self.vista.txt_user_correo.text().strip()
+        pas = self.vista.txt_user_pass.text().strip()
+        rol = self.vista.combo_user_rol.currentText()
+
+        if not nom or not cor or not pas:
+            QMessageBox.warning(self.vista, "Campos Incompletos", "⚠️ Por favor completa el nombre, correo y contraseña.")
+            return
+
+        self.vista.lbl_estado_usuarios.setText("⏳ Guardando usuario...")
+        self.vista.lbl_estado_usuarios.setStyleSheet("color: #38BDF8; font-weight: bold;")
+
+        exito = self.modelo.crear_usuario(nom, cor, pas, rol)
+        if exito:
+            self.vista.lbl_estado_usuarios.setText(f"✅ Miembro '{nom}' registrado exitosamente.")
+            self.vista.lbl_estado_usuarios.setStyleSheet("color: #10B981; font-weight: bold;")
+            self.vista.txt_user_nombre.clear()
+            self.vista.txt_user_correo.clear()
+            self.vista.txt_user_pass.clear()
+            self.cargar_tabla_usuarios()
+        else:
+            self.vista.lbl_estado_usuarios.setText("❌ Error al registrar usuario. Verifica el correo o la conexión.")
+            self.vista.lbl_estado_usuarios.setStyleSheet("color: #EF4444; font-weight: bold;")
+
+    def eliminar_usuario_seleccionado(self):
+        """Elimina el usuario seleccionado en la tabla."""
+        fila = self.vista.tabla_usuarios.currentRow()
+        if fila < 0 or fila >= len(self.usuarios_cache):
+            QMessageBox.warning(self.vista, "Sin Selección", "⚠️ Selecciona un usuario de la tabla primero.")
+            return
+        user = self.usuarios_cache[fila]
+        id_u = user["id_usuario"]
+        nom_u = user["nombre"]
+
+        resp = QMessageBox.question(
+            self.vista, "⚠️ Confirmar Eliminación",
+            f"¿Estás seguro de eliminar a '{nom_u}' (ID {id_u}) del sistema?\nEsta acción no se puede deshacer.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if resp == QMessageBox.StandardButton.Yes:
+            if self.modelo.eliminar_usuario(id_u):
+                QMessageBox.information(self.vista, "Usuario Eliminado", f"✅ Usuario '{nom_u}' eliminado correctamente.")
+                self.cargar_tabla_usuarios()
+            else:
+                QMessageBox.critical(self.vista, "Error", "❌ No se pudo eliminar el usuario.")
 
     def _toggle_sel_todo_historial(self, marcado: bool):
         """Marca o desmarca todos los checkboxes visibles de la tabla de historial."""
@@ -483,22 +703,46 @@ class ControladorRiego:
                                  "❌ No se pudo eliminar ninguna alerta. Verifica la conexión con la API.")
 
     def exportar_reporte(self):
-        ruta_archivo, _ = QFileDialog.getSaveFileName(self.vista, "Guardar Reporte", "Reporte_SmartVivero.pdf", "PDF Files (*.pdf)")
+        ruta_archivo, _ = QFileDialog.getSaveFileName(self.vista, "Guardar Reporte", f"Reporte_SmartVivero_Sector{self.sector_activo}.pdf", "PDF Files (*.pdf)")
         if not ruta_archivo: return 
-        datos = self.historial_cache if self.historial_cache else self.modelo.obtener_historial()
+        datos = self.historial_cache if self.historial_cache else self.modelo.obtener_historial(self.sector_activo)
         
-        html = """
+        # Obtener datos del sector activo para la cabecera
+        sec_actual = None
+        for s in self.sectores_cache:
+            if s.get("id_sector") == self.sector_activo:
+                sec_actual = s
+                break
+        
+        nombre_sec = sec_actual.get("nombre_sector", f"Sector {self.sector_activo}") if sec_actual else f"Sector {self.sector_activo}"
+        encargado = sec_actual.get("encargado_nombre", "Equipo Técnico") if sec_actual else "Equipo Técnico"
+        rol_enc = sec_actual.get("encargado_rol", "Agrónomo") if sec_actual else "Agrónomo"
+        correo_enc = sec_actual.get("encargado_correo", "contacto@vivero.com") if sec_actual else "contacto@vivero.com"
+        cultivo = sec_actual.get("tipo_cultivo", "Cultivo General") if sec_actual else "Cultivo General"
+
+        html = f"""
         <h1 style='text-align: center; color: #0F172A; font-family: Arial;'>Reporte Operativo - SmartVivero</h1>
-        <p style='text-align: center; font-family: Arial; color: #64748B;'><b>Generado por el sistema central</b></p>
+        <p style='text-align: center; font-family: Arial; color: #0284C7; font-size: 14px;'><b>Área: {nombre_sec} | Cultivo: {cultivo}</b></p>
+        <p style='text-align: center; font-family: Arial; color: #64748B; font-size: 12px;'>
+            <b>👨‍🌾 Encargado del Área:</b> {encargado} ({rol_enc}) &nbsp;|&nbsp; 
+            <b>📧 Contacto:</b> {correo_enc} &nbsp;|&nbsp; 
+            <b>Generado por:</b> {self.usuario_sesion['nombre']}
+        </p>
         <hr>
-        <table border='1' width='100%' cellspacing='0' cellpadding='8' style='font-family: Arial; border-collapse: collapse;'>
+        <table border='1' width='100%' cellspacing='0' cellpadding='8' style='font-family: Arial; border-collapse: collapse; margin-top: 12px;'>
             <tr style='background-color: #1E293B; color: white;'>
                 <th>ID</th><th>Fecha / Hora</th><th>Ubicación</th><th>Humedad (%)</th><th>Valor ADC</th><th>Sensor</th>
             </tr>
         """
         for fila in datos:
             html += "<tr>" + "".join(f"<td style='text-align: center;'>{d}</td>" for d in fila) + "</tr>"
-        html += "</table>"
+        html += """
+        </table>
+        <br><br>
+        <p style='text-align: right; font-family: Arial; font-size: 11px; color: #64748B;'>
+            <i>Documento validado automáticamente por el Sistema Central de Riego SmartVivero IoT.</i>
+        </p>
+        """
         
         doc = QTextDocument()
         doc.setHtml(html)
@@ -506,4 +750,4 @@ class ControladorRiego:
         printer.setOutputFormat(QPrinter.OutputFormat.PdfFormat)
         printer.setOutputFileName(ruta_archivo)
         doc.print(printer)
-        QMessageBox.information(self.vista, "Reporte Exitoso", f"📄 El documento PDF ha sido generado y guardado en tu equipo.")
+        QMessageBox.information(self.vista, "Reporte Exitoso", f"📄 El documento PDF del {nombre_sec} ha sido generado y guardado en tu equipo.")

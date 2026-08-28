@@ -5,8 +5,8 @@ from matplotlib.figure import Figure
 
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QLabel, QPushButton, QTableWidget, QTableWidgetItem,
-                             QHeaderView, QFrame, QCheckBox, QHBoxLayout,
-                             QProgressBar, QLineEdit, QStackedWidget, QFormLayout, QSpinBox)
+                             QHeaderView, QFrame, QCheckBox, QDialog,
+                             QProgressBar, QLineEdit, QStackedWidget, QFormLayout, QSpinBox, QComboBox)
 from PyQt6.QtCore import Qt, QPropertyAnimation, QEasingCurve
 
 # =============================================================================
@@ -23,6 +23,10 @@ CSS_OSCURO = """
         background-color: #141E2E;
         border-right: 2px solid #1E3048;
     }
+    QFrame#top_bar {
+        background-color: #141E2E;
+        border-bottom: 2px solid #1E3048;
+    }
     QFrame#card {
         background-color: #162032;
         border-radius: 14px;
@@ -32,6 +36,19 @@ CSS_OSCURO = """
         background-color: #1A2840;
         border-radius: 10px;
         border: 1px solid #243450;
+    }
+
+    QComboBox {
+        background-color: #0B1120; color: #E2EAF4;
+        border: 1.5px solid #1E3048;
+        border-radius: 8px; padding: 6px 12px; font-size: 13px; font-weight: 600;
+    }
+    QComboBox:focus { border: 1.5px solid #0EA5E9; }
+    QComboBox::drop-down { border: none; width: 24px; }
+    QComboBox QAbstractItemView {
+        background-color: #141E2E; color: #E2EAF4;
+        selection-background-color: #0EA5E9; selection-color: white;
+        border: 1px solid #1E3048; border-radius: 6px; padding: 4px;
     }
 
     QPushButton.nav_btn {
@@ -153,6 +170,10 @@ CSS_CLARO = """
         background-color: #FFFFFF;
         border-right: 2px solid #DDE6EF;
     }
+    QFrame#top_bar {
+        background-color: #FFFFFF;
+        border-bottom: 2px solid #DDE6EF;
+    }
     QFrame#card {
         background-color: #FFFFFF;
         border-radius: 14px;
@@ -162,6 +183,19 @@ CSS_CLARO = """
         background-color: #F7FAFC;
         border-radius: 10px;
         border: 1px solid #DDE6EF;
+    }
+
+    QComboBox {
+        background-color: #F0F4F8; color: #1E2D3D;
+        border: 1.5px solid #DDE6EF;
+        border-radius: 8px; padding: 6px 12px; font-size: 13px; font-weight: 600;
+    }
+    QComboBox:focus { border: 1.5px solid #0284C7; }
+    QComboBox::drop-down { border: none; width: 24px; }
+    QComboBox QAbstractItemView {
+        background-color: #FFFFFF; color: #1E2D3D;
+        selection-background-color: #EBF4FF; selection-color: #0284C7;
+        border: 1px solid #DDE6EF; border-radius: 6px; padding: 4px;
     }
 
     QPushButton.nav_btn {
@@ -388,13 +422,24 @@ class VistaRiego(QMainWindow):
 
         self._crear_sidebar()
 
+        # Contenedor derecho (Barra Superior Global Fija + Paginador)
+        contenedor_derecho = QWidget()
+        layout_derecho = QVBoxLayout(contenedor_derecho)
+        layout_derecho.setContentsMargins(0, 0, 0, 0)
+        layout_derecho.setSpacing(0)
+
+        self._crear_barra_superior(layout_derecho)
+
         self.paginador = QStackedWidget()
         self.paginador.setObjectName("paginador")
-        self.layout_maestro.addWidget(self.paginador)
+        layout_derecho.addWidget(self.paginador)
+
+        self.layout_maestro.addWidget(contenedor_derecho)
 
         self._crear_pantalla_dashboard()
         self._crear_pantalla_graficas()
         self._crear_pantalla_parametros()
+        self._crear_pantalla_usuarios()
 
     # -------------------------------------------------------------------------
     # Helpers de tema
@@ -448,10 +493,11 @@ class VistaRiego(QMainWindow):
         self.btn_nav_home     = QPushButton("🏠   Panel Principal")
         self.btn_nav_graph    = QPushButton("📈   Análisis Gráfico")
         self.btn_nav_settings = QPushButton("⚙️   Configuración")
+        self.btn_nav_users    = QPushButton("👥   Personal & Roles")
         self.btn_nav_docs     = QPushButton("📄   Exportar PDF")
 
         for btn in [self.btn_nav_home, self.btn_nav_graph,
-                    self.btn_nav_settings, self.btn_nav_docs]:
+                    self.btn_nav_settings, self.btn_nav_users, self.btn_nav_docs]:
             btn.setProperty("class", "nav_btn")
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             layout_side.addWidget(btn)
@@ -474,7 +520,7 @@ class VistaRiego(QMainWindow):
         layout_side.addSpacing(8)
 
         # Footer
-        lbl_admin = QLabel("👨‍💻 Desarrollado por:\nIntegrantes Grupo 3")
+        lbl_admin = QLabel("👨‍💻 Desarrollado por:\nGRUPO 3")
         self._reg(lbl_admin, *self._e("lbl_admin"))
         layout_side.addWidget(lbl_admin)
 
@@ -817,3 +863,313 @@ class VistaRiego(QMainWindow):
         layout.addWidget(form_frame)
         layout.addStretch()
         self.paginador.addWidget(self.page_parametros)
+
+    # -------------------------------------------------------------------------
+    # Barra Superior Global Permanente
+    # -------------------------------------------------------------------------
+
+    def _crear_barra_superior(self, layout_padre):
+        self.frame_top_bar = QFrame()
+        self.frame_top_bar.setObjectName("top_bar")
+        self.frame_top_bar.setFixedHeight(68)
+
+        layout_top = QHBoxLayout(self.frame_top_bar)
+        layout_top.setContentsMargins(24, 8, 24, 8)
+        layout_top.setSpacing(14)
+
+        # 1. Selector de Sector
+        lbl_sec = QLabel("📍 Sector:")
+        lbl_sec.setStyleSheet("font-weight: 800; font-size: 13px;")
+        self._reg(lbl_sec, "color: #E2EAF4; font-weight: 800; font-size: 13px;", "color: #1E2D3D; font-weight: 800; font-size: 13px;")
+
+        self.combo_sector = QComboBox()
+        self.combo_sector.setFixedWidth(240)
+        self.combo_sector.setCursor(Qt.CursorShape.PointingHandCursor)
+
+        # 2. Información del Miembro Encargado
+        v_encargado = QVBoxLayout()
+        v_encargado.setSpacing(2)
+        self.lbl_top_encargado = QLabel("👨‍🌾 Encargado: Diego Charry (Administrador General)")
+        self.lbl_top_encargado.setStyleSheet("font-weight: 700; font-size: 13px; color: #56CFE1;")
+        self.lbl_top_correo = QLabel("📧 diego.charry@vivero.com  |  🌱 Cultivo: Orquídeas y Suculentas")
+        self.lbl_top_correo.setStyleSheet("font-size: 11.5px; color: #7A90A8;")
+        v_encargado.addWidget(self.lbl_top_encargado)
+        v_encargado.addWidget(self.lbl_top_correo)
+
+        # 3. Selector de Estado de Presencia y Botón Interactivo de Sesión
+        self.combo_estado_usuario = QComboBox()
+        self.combo_estado_usuario.setFixedWidth(145)
+        self.combo_estado_usuario.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.combo_estado_usuario.addItem("🟢  En Línea", "EN_LINEA")
+        self.combo_estado_usuario.addItem("🟡  Ausente", "AUSENTE")
+        self.combo_estado_usuario.addItem("🔴  En Campo", "EN_CAMPO")
+        self.actualizar_estilo_estado("EN_LINEA")
+
+        self.btn_badge_sesion = QPushButton("👤  Diego Charry (ADMINISTRADOR)  ▾")
+        self.btn_badge_sesion.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_badge_sesion.setToolTip("Haz clic para cambiar de cuenta o iniciar sesión")
+        self.btn_badge_sesion.setStyleSheet(
+            "QPushButton {"
+            "   background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1E3048, stop:1 #243450);"
+            "   color: #38BDF8; font-size: 11.5px; font-weight: 700;"
+            "   padding: 6px 14px; border-radius: 12px; border: 1px solid #0284C7;"
+            "}"
+            "QPushButton:hover {"
+            "   background: #0284C7; color: white; border: 1px solid #38BDF8;"
+            "}"
+        )
+
+        layout_top.addWidget(lbl_sec)
+        layout_top.addWidget(self.combo_sector)
+        layout_top.addSpacing(10)
+        layout_top.addLayout(v_encargado)
+        layout_top.addStretch()
+        layout_top.addWidget(self.combo_estado_usuario)
+        layout_top.addWidget(self.btn_badge_sesion)
+
+        layout_padre.addWidget(self.frame_top_bar)
+
+    def actualizar_estilo_estado(self, estado: str = "EN_LINEA"):
+        """Actualiza los colores y el estilo del selector de presencia según el estado."""
+        estilos = {
+            "EN_LINEA": (
+                "QComboBox {"
+                "   background: #064E3B; color: #34D399; font-size: 11.5px; font-weight: 700;"
+                "   padding: 5px 10px; border-radius: 12px; border: 1px solid #059669;"
+                "}"
+                "QComboBox QAbstractItemView {"
+                "   background-color: #141E2E; color: #E2EAF4; selection-background-color: #064E3B;"
+                "}"
+            ),
+            "AUSENTE": (
+                "QComboBox {"
+                "   background: #451A03; color: #FBBF24; font-size: 11.5px; font-weight: 700;"
+                "   padding: 5px 10px; border-radius: 12px; border: 1px solid #D97706;"
+                "}"
+                "QComboBox QAbstractItemView {"
+                "   background-color: #141E2E; color: #E2EAF4; selection-background-color: #451A03;"
+                "}"
+            ),
+            "EN_CAMPO": (
+                "QComboBox {"
+                "   background: #450A0A; color: #F87171; font-size: 11.5px; font-weight: 700;"
+                "   padding: 5px 10px; border-radius: 12px; border: 1px solid #DC2626;"
+                "}"
+                "QComboBox QAbstractItemView {"
+                "   background-color: #141E2E; color: #E2EAF4; selection-background-color: #450A0A;"
+                "}"
+            ),
+        }
+        self.combo_estado_usuario.setStyleSheet(estilos.get(estado, estilos["EN_LINEA"]))
+
+    # -------------------------------------------------------------------------
+    # Pantalla Gestión de Personal y Roles
+    # -------------------------------------------------------------------------
+
+    def _crear_pantalla_usuarios(self):
+        self.page_usuarios = QWidget()
+        self.page_usuarios.setObjectName("page_usuarios")
+        layout = QVBoxLayout(self.page_usuarios)
+        layout.setContentsMargins(28, 28, 28, 28)
+        layout.setSpacing(16)
+
+        lbl_titulo = QLabel("👥  Gestión de Personal y Control de Roles")
+        self._reg(lbl_titulo, *self._e("titulo"))
+        layout.addWidget(lbl_titulo)
+
+        lbl_sub = QLabel("Registra al equipo agrónomo, asigna roles de acceso y audita permisos en el sistema.")
+        self._reg(lbl_sub, *self._e("subtitulo"))
+        layout.addWidget(lbl_sub)
+
+        # Formulario registro
+        form_frame = QFrame()
+        form_frame.setObjectName("card")
+        f_layout = QVBoxLayout(form_frame)
+        f_layout.setContentsMargins(20, 18, 20, 18)
+        f_layout.setSpacing(12)
+
+        lbl_f_title = QLabel("➕  Registrar Nuevo Miembro del Equipo")
+        lbl_f_title.setStyleSheet("font-weight: 700; font-size: 13px; color: #38BDF8;")
+        f_layout.addWidget(lbl_f_title)
+
+        h_inputs = QHBoxLayout()
+        h_inputs.setSpacing(12)
+
+        self.txt_user_nombre = QLineEdit()
+        self.txt_user_nombre.setPlaceholderText("Nombre completo (ej. Diego Charry)")
+
+        self.txt_user_correo = QLineEdit()
+        self.txt_user_correo.setPlaceholderText("Correo electrónico")
+
+        self.txt_user_pass = QLineEdit()
+        self.txt_user_pass.setPlaceholderText("Contraseña")
+        self.txt_user_pass.setEchoMode(QLineEdit.EchoMode.Password)
+
+        self.combo_user_rol = QComboBox()
+        self.combo_user_rol.addItems(["ADMINISTRADOR", "OPERADOR", "AGRONOMO", "VISUALIZADOR"])
+        self.combo_user_rol.setFixedWidth(160)
+
+        self.btn_guardar_usuario = QPushButton("💾  Registrar")
+        self.btn_guardar_usuario.setProperty("class", "btn_accion")
+        self.btn_guardar_usuario.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_guardar_usuario.setFixedWidth(130)
+
+        h_inputs.addWidget(self.txt_user_nombre, 2)
+        h_inputs.addWidget(self.txt_user_correo, 2)
+        h_inputs.addWidget(self.txt_user_pass, 1)
+        h_inputs.addWidget(self.combo_user_rol, 1)
+        h_inputs.addWidget(self.btn_guardar_usuario)
+        f_layout.addLayout(h_inputs)
+
+        self.lbl_estado_usuarios = QLabel("")
+        self.lbl_estado_usuarios.setStyleSheet("font-size: 12px; font-weight: 700;")
+        f_layout.addWidget(self.lbl_estado_usuarios)
+        layout.addWidget(form_frame)
+
+        # Tabla de usuarios
+        frame_tabla = QFrame()
+        frame_tabla.setObjectName("card")
+        v_tab = QVBoxLayout(frame_tabla)
+        v_tab.setContentsMargins(16, 14, 16, 14)
+        v_tab.setSpacing(10)
+
+        lbl_tab_title = QLabel("📋  Personal Registrado en el Sistema")
+        lbl_tab_title.setStyleSheet("font-weight: 700; font-size: 12px; color: #10B981; letter-spacing: 0.5px;")
+        v_tab.addWidget(lbl_tab_title)
+
+        self.tabla_usuarios = QTableWidget(0, 6)
+        self.tabla_usuarios.setHorizontalHeaderLabels(["ID", "Nombre", "Correo", "Rol", "Estado", "Fecha Registro"])
+        self.tabla_usuarios.setTextElideMode(Qt.TextElideMode.ElideNone)
+        self.tabla_usuarios.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        header_u = self.tabla_usuarios.horizontalHeader()
+        header_u.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        header_u.setStretchLastSection(True)
+        self.tabla_usuarios.setAlternatingRowColors(True)
+        self.tabla_usuarios.verticalHeader().setVisible(False)
+        self.tabla_usuarios.setShowGrid(True)
+        v_tab.addWidget(self.tabla_usuarios)
+
+        # Botón Eliminar Usuario y refrescar
+        h_btn_tab = QHBoxLayout()
+        self.btn_eliminar_usuario = QPushButton("🗑️  Eliminar Seleccionado")
+        self.btn_eliminar_usuario.setProperty("class", "btn_peligro")
+        self.btn_eliminar_usuario.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_eliminar_usuario.setFixedWidth(200)
+
+        self.btn_refrescar_usuarios = QPushButton("🔄  Refrescar Lista")
+        self.btn_refrescar_usuarios.setProperty("class", "btn_toggle")
+        self.btn_refrescar_usuarios.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_refrescar_usuarios.setFixedWidth(160)
+
+        h_btn_tab.addWidget(self.btn_eliminar_usuario)
+        h_btn_tab.addWidget(self.btn_refrescar_usuarios)
+        h_btn_tab.addStretch()
+        v_tab.addLayout(h_btn_tab)
+
+        layout.addWidget(frame_tabla)
+        self.paginador.addWidget(self.page_usuarios)
+
+
+# =============================================================================
+# DIÁLOGO CAMBIAR DE CUENTA / INICIAR SESIÓN
+# =============================================================================
+
+class DialogoCambiarCuenta(QDialog):
+    def __init__(self, parent=None, usuarios=None, modo_oscuro=True):
+        super().__init__(parent)
+        self.setWindowTitle("🔐 Cambiar de Cuenta - SmartVivero")
+        self.setFixedSize(430, 390)
+        self.usuario_seleccionado = None
+
+        bg_color = "#141E2E" if modo_oscuro else "#FFFFFF"
+        text_color = "#E2EAF4" if modo_oscuro else "#1E2D3D"
+        card_bg = "#0B1120" if modo_oscuro else "#F0F4F8"
+        border_color = "#1E3048" if modo_oscuro else "#DDE6EF"
+
+        self.setStyleSheet(f"""
+            QDialog {{ background-color: {bg_color}; }}
+            QLabel {{ color: {text_color}; font-size: 13px; font-family: 'Segoe UI', Arial; }}
+            QLineEdit, QComboBox {{
+                background-color: {card_bg}; color: {text_color};
+                border: 1.5px solid {border_color}; border-radius: 8px;
+                padding: 9px 12px; font-size: 13px;
+            }}
+            QLineEdit:focus, QComboBox:focus {{ border: 1.5px solid #0EA5E9; }}
+        """)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(26, 24, 26, 24)
+        layout.setSpacing(12)
+
+        lbl_titulo = QLabel("👤  Cambiar de Usuario Activo")
+        lbl_titulo.setStyleSheet("font-size: 17px; font-weight: 800; color: #38BDF8;")
+        layout.addWidget(lbl_titulo)
+
+        lbl_sub = QLabel("Selecciona un perfil registrado o introduce tus credenciales:")
+        lbl_sub.setStyleSheet("font-size: 12px; color: #7A90A8;")
+        lbl_sub.setWordWrap(True)
+        layout.addWidget(lbl_sub)
+
+        # 1. Selector rápido de usuarios
+        lbl_sel = QLabel("Seleccionar perfil registrado:")
+        lbl_sel.setStyleSheet("font-weight: 700; font-size: 12px; margin-top: 4px;")
+        self.combo_perfiles = QComboBox()
+        if usuarios:
+            for u in usuarios:
+                self.combo_perfiles.addItem(f"👤 {u['nombre']} — [{u.get('rol', 'OPERADOR')}]", u)
+
+        layout.addWidget(lbl_sel)
+        layout.addWidget(self.combo_perfiles)
+
+        # Separador visual
+        lbl_o = QLabel("── O ingresa con correo ──")
+        lbl_o.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lbl_o.setStyleSheet("color: #4A6280; font-size: 11px; font-weight: 600; margin: 4px 0;")
+        layout.addWidget(lbl_o)
+
+        self.txt_correo = QLineEdit()
+        self.txt_correo.setPlaceholderText("Correo electrónico")
+
+        self.txt_pass = QLineEdit()
+        self.txt_pass.setPlaceholderText("Contraseña (opcional para cambio rápido)")
+        self.txt_pass.setEchoMode(QLineEdit.EchoMode.Password)
+
+        # Al cambiar selector, actualizar el correo
+        self.combo_perfiles.currentIndexChanged.connect(self._al_cambiar_perfil)
+        if usuarios and len(usuarios) > 0:
+            self.txt_correo.setText(usuarios[0].get("correo", ""))
+
+        layout.addWidget(self.txt_correo)
+        layout.addWidget(self.txt_pass)
+
+        self.lbl_error = QLabel("")
+        self.lbl_error.setStyleSheet("color: #EF4444; font-size: 12px; font-weight: bold;")
+        layout.addWidget(self.lbl_error)
+
+        # Botones de Acción
+        h_btn = QHBoxLayout()
+        h_btn.setSpacing(10)
+
+        self.btn_login = QPushButton("🔓  Cambiar Cuenta")
+        self.btn_login.setStyleSheet(
+            "background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #0369A1, stop:1 #0EA5E9);"
+            "color: white; border-radius: 8px; padding: 10px 18px; font-weight: 800; font-size: 13px; border: none;"
+        )
+        self.btn_login.setCursor(Qt.CursorShape.PointingHandCursor)
+
+        self.btn_cancelar = QPushButton("Cancelar")
+        self.btn_cancelar.setStyleSheet(
+            "background-color: #1E3048; color: #CBD5E1; border-radius: 8px; padding: 10px 16px; font-weight: 600; font-size: 13px; border: none;"
+        )
+        self.btn_cancelar.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_cancelar.clicked.connect(self.reject)
+
+        h_btn.addWidget(self.btn_login)
+        h_btn.addWidget(self.btn_cancelar)
+        layout.addLayout(h_btn)
+
+    def _al_cambiar_perfil(self, idx):
+        data = self.combo_perfiles.currentData()
+        if data:
+            self.txt_correo.setText(data.get("correo", ""))
+            self.txt_pass.clear()
