@@ -1089,30 +1089,29 @@ class ControladorRiego:
 
             <table width="100%" border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse; font-family: Arial, sans-serif; font-size: 10px; border-color: #E2E8F0; text-align: center;">
                 <tr style="background-color: #1E293B; color: #FFFFFF;">
-                    <th width="10%">ID</th>
-                    <th width="24%">Fecha / Hora</th>
-                    <th width="22%">Tipo de Alerta</th>
+                    <th width="26%">Fecha / Hora</th>
+                    <th width="18%">Tipo</th>
                     <th width="20%">Sensor</th>
-                    <th width="24%">Estado / Detalle</th>
+                    <th width="18%">Nivel Detectado</th>
+                    <th width="18%">Estado Bomba</th>
                 </tr>
             """
 
             if alertas:
-                for i, al in enumerate(alertas[:5]):
+                for i, al in enumerate(alertas[:8]):
                     bg = "#F8FAFC" if i % 2 == 1 else "#FFFFFF"
-                    id_al = al[0]
-                    f_al = al[1]
-                    t_al = al[2]
-                    s_al = al[3]
-                    val_al = al[4]
-                    est_al = al[5]
+                    f_al   = str(al[0]) if len(al) > 0 else ""
+                    t_al   = str(al[1]) if len(al) > 1 else "CRÍTICO"
+                    s_al   = str(al[2]) if len(al) > 2 else "Sensor Flotador"
+                    val_al = str(al[3]) if len(al) > 3 else "NORMAL"
+                    est_al = str(al[4]) if len(al) > 4 else "Activa"
                     html += f"""
                     <tr style="background-color: {bg};">
-                        <td><b>#{id_al}</b></td>
                         <td>{f_al}</td>
                         <td><font color="#DC2626"><b>{t_al}</b></font></td>
                         <td>{s_al}</td>
-                        <td><b>{est_al}</b> ({val_al})</td>
+                        <td><b>{val_al}</b></td>
+                        <td>{est_al}</td>
                     </tr>
                     """
             else:
