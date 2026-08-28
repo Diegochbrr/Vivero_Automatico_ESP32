@@ -88,6 +88,9 @@ class ControladorRiego:
         self.cargar_sectores_iniciales()
         self.cargar_tabla_usuarios()
 
+        # Aplicar restricciones de seguridad del rol inicial
+        self.aplicar_permisos_rol(self.usuario_sesion.get("rol", "ADMINISTRADOR"))
+
         # Iniciar Hilo en Segundo Plano (Asíncrono - Cero lag en la interfaz)
         self.hilo = HiloActualizacionDatos(self.modelo, id_sector=self.sector_activo, intervalo_segundos=3)
         self.hilo.datos_obtenidos.connect(self.actualizar_interfaz)
@@ -502,6 +505,68 @@ class ControladorRiego:
 
         if sector_encontrado_idx >= 0 and sector_encontrado_idx != self.vista.combo_sector.currentIndex():
             self.vista.combo_sector.setCurrentIndex(sector_encontrado_idx)
+
+        # Aplicar restricciones de permisos del nuevo rol activo
+        self.aplicar_permisos_rol(self.usuario_sesion["rol"])
+
+    def aplicar_permisos_rol(self, rol: str):
+        """
+        Aplica la matriz de permisos de seguridad según el rol del usuario activo:
+          - ADMINISTRADOR: Control total (Umbrales, Forzar Riego, Eliminar Alertas/Historial, Gestión de Personal).
+          - AGRONOMO: Configuración de umbrales y forzar riego. Sin permisos de eliminación ni gestión de personal.
+          - OPERADOR / TECNICO_IOT: Forzar riego y monitoreo. Umbrales, eliminación y personal bloqueados.
+          - VISUALIZADOR: Solo lectura (Dashboard, Gráficas y Reportes). Todas las acciones destructivas y de control bloqueadas.
+        """
+        rol = str(rol).upper()
+        es_admin = (rol == "ADMINISTRADOR")
+        es_agronomo = (rol in ["ADMINISTRADOR", "AGRONOMO"])
+        es_operador = (rol in ["ADMINISTRADOR", "AGRONOMO", "OPERADOR", "TECNICO_IOT"])
+
+        # 1. Eliminación de datos históricos y alertas (Solo Administrador)
+        self.vista.btn_eliminar_medicion.setEnabled(es_admin)
+        self.vista.btn_eliminar_alerta.setEnabled(es_admin)
+        self.vista.btn_sel_todo_alertas.setEnabled(es_admin)
+        self.vista.btn_sel_todo_historial.setEnabled(es_admin)
+        tooltip_elim = "Eliminar registros seleccionados" if es_admin else "🔒 Bloqueado: Solo Administradores pueden eliminar registros históricos."
+        self.vista.btn_eliminar_medicion.setToolTip(tooltip_elim)
+        self.vista.btn_eliminar_alerta.setToolTip(tooltip_elim)
+
+        # 2. Configuración y Guardado de Umbrales (Administrador y Agrónomo)
+        self.vista.btn_guardar_params.setEnabled(es_agronomo)
+        self.vista.input_hum_min.setEnabled(es_agronomo)
+        self.vista.input_hum_max.setEnabled(es_agronomo)
+        self.vista.input_tiempo_max.setEnabled(es_agronomo)
+        if not es_agronomo:
+            self.vista.lbl_estado_params.setText(f"🔒 Rol {rol}: Solo lectura. No tienes permisos para modificar umbrales.")
+            self.vista.lbl_estado_params.setStyleSheet("color: #F59E0B; font-size: 12px; font-weight: bold;")
+            self.vista.btn_guardar_params.setToolTip("🔒 Bloqueado: Requiere rol ADMINISTRADOR o AGRÓNOMO.")
+        else:
+            self.vista.lbl_estado_params.setText("")
+            self.vista.btn_guardar_params.setToolTip("Guardar parámetros de riego en la base de datos")
+
+        # 3. Control Manual (Forzar Riego) - Administrador, Agrónomo, Operador y Técnico IoT
+        self.vista.btn_forzar_riego.setEnabled(es_operador)
+        self.vista.spin_duracion_riego.setEnabled(es_operador)
+        if not es_operador:
+            self.vista.btn_forzar_riego.setToolTip("🔒 Bloqueado: Rol VISUALIZADOR en modo solo lectura.")
+            self.vista.lbl_estado_riego.setText("🔒 Modo Solo Lectura: Control manual restringido.")
+            self.vista.lbl_estado_riego.setStyleSheet("color: #F59E0B; font-size: 11.5px; font-weight: bold; background: transparent;")
+        else:
+            self.vista.btn_forzar_riego.setToolTip("Activar bomba de riego de forma manual")
+            self.vista.lbl_estado_riego.setText("")
+
+        # 4. Gestión de Personal (Solo Administrador)
+        self.vista.btn_guardar_usuario.setEnabled(es_admin)
+        self.vista.btn_eliminar_usuario.setEnabled(es_admin)
+        self.vista.txt_user_nombre.setEnabled(es_admin)
+        self.vista.txt_user_correo.setEnabled(es_admin)
+        self.vista.txt_user_pass.setEnabled(es_admin)
+        self.vista.combo_user_rol.setEnabled(es_admin)
+        if not es_admin:
+            self.vista.lbl_estado_usuarios.setText(f"🔒 Rol {rol}: Solo consulta. Solo Administradores pueden registrar o eliminar miembros.")
+            self.vista.lbl_estado_usuarios.setStyleSheet("color: #F59E0B; font-size: 12px; font-weight: bold;")
+        else:
+            self.vista.lbl_estado_usuarios.setText("")
 
     def cambiar_estado_presencia(self, index: int):
         """Actualiza los estilos visuales cuando el operador cambia su estado (En Línea, Ausente, En Campo)."""

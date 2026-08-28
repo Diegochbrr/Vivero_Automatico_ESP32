@@ -125,6 +125,13 @@ CSS_OSCURO = """
     QLineEdit::placeholder { color: #4A6280; }
     QSpinBox::up-button, QSpinBox::down-button { width: 18px; }
 
+    QPushButton:disabled {
+        background-color: #1E293B; color: #475569; border: 1px solid #334155;
+    }
+    QLineEdit:disabled, QSpinBox:disabled, QComboBox:disabled {
+        background-color: #0B1120; color: #64748B; border: 1.5px solid #1E293B;
+    }
+
     QProgressBar {
         border: none; background-color: #1E3048;
         border-radius: 7px; height: 14px;
@@ -263,13 +270,20 @@ CSS_CLARO = """
     QTableWidget::item:selected { background-color: #0EA5E9; color: white; }
 
     QLineEdit, QSpinBox {
-        background-color: #FFFFFF; color: #1E2D3D;
+        background-color: #F0F4F8; color: #1E2D3D;
         border: 1.5px solid #DDE6EF;
         border-radius: 8px; padding: 9px 12px; font-size: 13px;
     }
-    QLineEdit:focus, QSpinBox:focus { border: 1.5px solid #0EA5E9; }
+    QLineEdit:focus, QSpinBox:focus { border: 1.5px solid #0284C7; }
     QLineEdit::placeholder { color: #94A3B8; }
     QSpinBox::up-button, QSpinBox::down-button { width: 18px; }
+
+    QPushButton:disabled {
+        background-color: #E2E8F0; color: #94A3B8; border: 1px solid #CBD5E1;
+    }
+    QLineEdit:disabled, QSpinBox:disabled, QComboBox:disabled {
+        background-color: #F8FAFC; color: #94A3B8; border: 1.5px solid #E2E8F0;
+    }
 
     QProgressBar {
         border: none; background-color: #DDE6EF;
