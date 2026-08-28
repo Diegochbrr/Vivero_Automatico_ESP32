@@ -197,50 +197,65 @@ class ViveroRepository:
                     """)
 
                     # 3. Semilla/Sincronización de los 5 Usuarios del Grupo 3
-                    cur.execute("""
-                        INSERT INTO usuarios (nombre, correo, contrasena_hash, rol, activo) VALUES
-                        ('Diego Charry', 'diego.charry@vivero.com', 'admin123', 'ADMINISTRADOR', TRUE),
-                        ('Angel Villalobos', 'angel.villalobos@vivero.com', 'admin123', 'AGRONOMO', TRUE),
-                        ('Adelfo Freyle', 'adelfo.freyle@vivero.com', 'admin123', 'OPERADOR', TRUE),
-                        ('Juan Quintero', 'juan.quintero@vivero.com', 'admin123', 'TECNICO_IOT', TRUE),
-                        ('Juan Figueroa', 'juan.figueroa@vivero.com', 'admin123', 'VISUALIZADOR', TRUE)
-                        ON CONFLICT (correo) DO UPDATE SET
-                            nombre = EXCLUDED.nombre,
-                            contrasena_hash = EXCLUDED.contrasena_hash,
-                            rol = EXCLUDED.rol,
-                            activo = TRUE;
-                    """)
+                    usuarios_iniciales = [
+                        ('Diego Charry', 'diego.charry@vivero.com', 'admin123', 'ADMINISTRADOR'),
+                        ('Angel Villalobos', 'angel.villalobos@vivero.com', 'admin123', 'AGRONOMO'),
+                        ('Adelfo Freyle', 'adelfo.freyle@vivero.com', 'admin123', 'OPERADOR'),
+                        ('Juan Quintero', 'juan.quintero@vivero.com', 'admin123', 'TECNICO_IOT'),
+                        ('Juan Figueroa', 'juan.figueroa@vivero.com', 'admin123', 'VISUALIZADOR'),
+                    ]
+                    for nom, cor, pas, rol in usuarios_iniciales:
+                        cur.execute("SELECT id_usuario FROM usuarios WHERE correo = %s;", (cor,))
+                        if cur.fetchone():
+                            cur.execute("""
+                                UPDATE usuarios SET nombre = %s, contrasena_hash = %s, rol = %s, activo = TRUE
+                                WHERE correo = %s;
+                            """, (nom, pas, rol, cor))
+                        else:
+                            cur.execute("""
+                                INSERT INTO usuarios (nombre, correo, contrasena_hash, rol, activo)
+                                VALUES (%s, %s, %s, %s, TRUE);
+                            """, (nom, cor, pas, rol))
 
                     # 4. Semilla/Sincronización de Sectores asignados al equipo
-                    cur.execute("""
-                        INSERT INTO sectores (id_sector, nombre_sector, encargado_nombre, encargado_correo, encargado_rol, tipo_cultivo, descripcion) VALUES
+                    sectores_iniciales = [
                         (1, 'Invernadero 1 (Principal)', 'Diego Charry', 'diego.charry@vivero.com', 'Administrador General', 'Orquídeas y Suculentas', 'Sector de telemetría IoT ESP32 automatizado'),
                         (2, 'Invernadero 2 (Cultivo Agrónomo)', 'Angel Villalobos', 'angel.villalobos@vivero.com', 'Ingeniero Agrónomo', 'Hortalizas y Tomates', 'Monitoreo de suelo y fertilización'),
                         (3, 'Invernadero 3 (Riego Automatizado)', 'Adelfo Freyle', 'adelfo.freyle@vivero.com', 'Operador de Riego', 'Semilleros y Flores', 'Área de aspersión y control de humedad'),
                         (4, 'Invernadero 4 (Laboratorio IoT)', 'Juan Quintero', 'juan.quintero@vivero.com', 'Técnico en Sistemas IoT', 'Cultivo Experimental', 'Banco de pruebas de sensores y actuadores ESP32'),
-                        (5, 'Invernadero 5 (Supervisión)', 'Juan Figueroa', 'juan.figueroa@vivero.com', 'Monitor y Visualizador', 'Plantas Ornamentales', 'Supervisión y control de calidad')
-                        ON CONFLICT (id_sector) DO UPDATE SET
-                            nombre_sector = EXCLUDED.nombre_sector,
-                            encargado_nombre = EXCLUDED.encargado_nombre,
-                            encargado_correo = EXCLUDED.encargado_correo,
-                            encargado_rol = EXCLUDED.encargado_rol,
-                            tipo_cultivo = EXCLUDED.tipo_cultivo,
-                            descripcion = EXCLUDED.descripcion;
-                    """)
+                        (5, 'Invernadero 5 (Supervisión)', 'Juan Figueroa', 'juan.figueroa@vivero.com', 'Monitor y Visualizador', 'Plantas Ornamentales', 'Supervisión y control de calidad'),
+                    ]
+                    for id_s, nom_s, enc_n, enc_c, enc_r, cul, des in sectores_iniciales:
+                        cur.execute("SELECT id_sector FROM sectores WHERE id_sector = %s;", (id_s,))
+                        if cur.fetchone():
+                            cur.execute("""
+                                UPDATE sectores SET nombre_sector = %s, encargado_nombre = %s, encargado_correo = %s, encargado_rol = %s, tipo_cultivo = %s, descripcion = %s
+                                WHERE id_sector = %s;
+                            """, (nom_s, enc_n, enc_c, enc_r, cul, des, id_s))
+                        else:
+                            cur.execute("""
+                                INSERT INTO sectores (id_sector, nombre_sector, encargado_nombre, encargado_correo, encargado_rol, tipo_cultivo, descripcion)
+                                VALUES (%s, %s, %s, %s, %s, %s, %s);
+                            """, (id_s, nom_s, enc_n, enc_c, enc_r, cul, des))
 
                     # 5. Asegurar umbrales para sectores 1 a 5
-                    cur.execute("""
-                        INSERT INTO umbrales_configuracion (id_sector, humedad_min_on, humedad_max_off, tiempo_max_riego_seg, id_usuario_modifica)
-                        VALUES 
-                            (1, 35.0, 70.0, 180, 1),
-                            (2, 40.0, 75.0, 150, 1),
-                            (3, 45.0, 80.0, 200, 1),
-                            (4, 30.0, 65.0, 120, 1),
-                            (5, 38.0, 72.0, 160, 1)
-                        ON CONFLICT (id_sector) DO NOTHING;
-                    """)
+                    umbrales_iniciales = [
+                        (1, 35.0, 70.0, 180),
+                        (2, 40.0, 75.0, 150),
+                        (3, 45.0, 80.0, 200),
+                        (4, 30.0, 65.0, 120),
+                        (5, 38.0, 72.0, 160),
+                    ]
+                    for id_s, h_min, h_max, t_max in umbrales_iniciales:
+                        cur.execute("SELECT id_sector FROM umbrales_configuracion WHERE id_sector = %s;", (id_s,))
+                        if not cur.fetchone():
+                            cur.execute("""
+                                INSERT INTO umbrales_configuracion (id_sector, humedad_min_on, humedad_max_off, tiempo_max_riego_seg, id_usuario_modifica)
+                                VALUES (%s, %s, %s, %s, 1);
+                            """, (id_s, h_min, h_max, t_max))
 
                     conn.commit()
+                    print("✅ Tablas, sectores y cuentas de usuarios inicializadas correctamente.")
         except Exception as e:
             print(f"⚠️ Advertencia en init_db: {e}")
 
@@ -518,8 +533,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Endpoint Raíz y Diagnóstico
-@app.get("/", tags=["Salud y Diagnóstico"])
+# Endpoint Raíz y Diagnóstico (Soporta GET y HEAD para Render health checks)
+@app.api_route("/", methods=["GET", "HEAD"], tags=["Salud y Diagnóstico"])
 def root():
     return {
         "status": "online",
