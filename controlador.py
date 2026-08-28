@@ -1,5 +1,5 @@
 from PyQt6.QtCore import QThread, pyqtSignal, Qt
-from PyQt6.QtWidgets import QTableWidgetItem, QFileDialog, QMessageBox
+from PyQt6.QtWidgets import QTableWidgetItem, QFileDialog, QMessageBox, QCheckBox, QWidget, QHBoxLayout
 from PyQt6.QtGui import QTextDocument
 from PyQt6.QtPrintSupport import QPrinter
 from modelo import ModeloRiego
@@ -49,8 +49,13 @@ class ControladorRiego:
         self.vista.txt_buscar_historial.textChanged.connect(self.filtrar_tabla_historial)
 
         # Botones de Eliminación
-        self.vista.btn_eliminar_medicion.clicked.connect(self.eliminar_medicion_seleccionada)
-        self.vista.btn_eliminar_alerta.clicked.connect(self.eliminar_alerta_seleccionada)
+        self.vista.btn_eliminar_medicion.clicked.connect(self.eliminar_mediciones_seleccionadas)
+        self.vista.btn_eliminar_alerta.clicked.connect(self.eliminar_alertas_seleccionadas)
+        self.vista.btn_sel_todo_alertas.toggled.connect(self._toggle_sel_todo_alertas)
+        self.vista.btn_sel_todo_historial.toggled.connect(self._toggle_sel_todo_historial)
+
+        # Botón Forzar Riego
+        self.vista.btn_forzar_riego.clicked.connect(self.forzar_riego_manual)
 
         # Botones de Configuración de Umbrales
         self.vista.btn_cargar_umbral.clicked.connect(self.cargar_umbral)
@@ -92,6 +97,16 @@ class ControladorRiego:
         if self.vista.paginador.currentIndex() == 1:
             self.actualizar_grafica_matplotlib()
 
+    def _make_chk_widget(self):
+        """Crea un QCheckBox perfectamente centrado dentro de un widget contenedor."""
+        contenedor = QWidget()
+        layout_chk = QHBoxLayout(contenedor)
+        layout_chk.setContentsMargins(0, 0, 0, 0)
+        layout_chk.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        chk = QCheckBox()
+        layout_chk.addWidget(chk)
+        return contenedor, chk
+
     def actualizar_tablas(self):
         filtro_hist = self.vista.txt_buscar_historial.text()
         filtro_alert = self.vista.txt_buscar_alertas.text()
@@ -99,31 +114,55 @@ class ControladorRiego:
         self.vista.tabla_historial.setRowCount(0)
         for fila_idx, fila_datos in enumerate(self.historial_cache):
             self.vista.tabla_historial.insertRow(fila_idx)
+
+            # Columna 0: checkbox centrado
+            contenedor_h, _ = self._make_chk_widget()
+            self.vista.tabla_historial.setCellWidget(fila_idx, 0, contenedor_h)
+
             for col_idx, dato in enumerate(fila_datos):
                 item = QTableWidgetItem(str(dato))
                 item.setToolTip(str(dato))
-                # Centrar ID, Humedad y ADC para mayor legibilidad
+                # Centrar ID, Humedad y ADC (ahora en cols 1, 4, 5)
                 if col_idx in [0, 3, 4]:
                     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self.vista.tabla_historial.setItem(fila_idx, col_idx, item)
+                self.vista.tabla_historial.setItem(fila_idx, col_idx + 1, item)
         
         self.vista.tabla_alertas.setRowCount(0)
         for fila_idx, fila_datos in enumerate(self.alertas_cache):
             self.vista.tabla_alertas.insertRow(fila_idx)
+
+            # Columna 0: checkbox centrado
+            contenedor_a, _ = self._make_chk_widget()
+            self.vista.tabla_alertas.setCellWidget(fila_idx, 0, contenedor_a)
+
             for col_idx, dato in enumerate(fila_datos):
                 item = QTableWidgetItem(str(dato))
                 item.setToolTip(str(dato))
-                # Centrar Tipo, Valor y Estado
+                # Centrar Tipo, Valor y Estado (ahora en cols 2, 4, 5)
                 if col_idx in [1, 3, 4]:
                     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self.vista.tabla_alertas.setItem(fila_idx, col_idx, item)
+                self.vista.tabla_alertas.setItem(fila_idx, col_idx + 1, item)
                 
         self.filtrar_tabla_historial(filtro_hist)
         self.filtrar_tabla_alertas(filtro_alert)
 
         # Ajustar ancho de columnas al contenido completo sin recortar nada
         self.vista.tabla_historial.resizeColumnsToContents()
+        self.vista.tabla_historial.setColumnWidth(0, 36)  # mantener ancho del checkbox
         self.vista.tabla_alertas.resizeColumnsToContents()
+        self.vista.tabla_alertas.setColumnWidth(0, 36)  # mantener ancho del checkbox
+
+        # Resetear botón Seleccionar Todo al refrescar (historial)
+        self.vista.btn_sel_todo_historial.blockSignals(True)
+        self.vista.btn_sel_todo_historial.setChecked(False)
+        self.vista.btn_sel_todo_historial.setText("\u2611\ufe0f  Seleccionar Todo")
+        self.vista.btn_sel_todo_historial.blockSignals(False)
+
+        # Resetear botón Seleccionar Todo al refrescar (alertas)
+        self.vista.btn_sel_todo_alertas.blockSignals(True)
+        self.vista.btn_sel_todo_alertas.setChecked(False)
+        self.vista.btn_sel_todo_alertas.setText("\u2611\ufe0f  Seleccionar Todo")
+        self.vista.btn_sel_todo_alertas.blockSignals(False)
         
     def actualizar_grafica_matplotlib(self):
         if not self.historial_cache:
@@ -242,7 +281,7 @@ class ControladorRiego:
         texto = texto.lower()
         for fila in range(self.vista.tabla_historial.rowCount()):
             coincide = False
-            for col in range(self.vista.tabla_historial.columnCount()):
+            for col in range(1, self.vista.tabla_historial.columnCount()):  # saltar col 0 (checkbox)
                 item = self.vista.tabla_historial.item(fila, col)
                 if item and texto in item.text().lower(): coincide = True; break
             self.vista.tabla_historial.setRowHidden(fila, not coincide)
@@ -251,7 +290,7 @@ class ControladorRiego:
         texto = texto.lower()
         for fila in range(self.vista.tabla_alertas.rowCount()):
             coincide = False
-            for col in range(self.vista.tabla_alertas.columnCount()):
+            for col in range(1, self.vista.tabla_alertas.columnCount()):  # saltar col 0 (checkbox)
                 item = self.vista.tabla_alertas.item(fila, col)
                 if item and texto in item.text().lower(): coincide = True; break
             self.vista.tabla_alertas.setRowHidden(fila, not coincide)
@@ -297,62 +336,151 @@ class ControladorRiego:
             self.vista.lbl_estado_params.setText("❌ Error al guardar. Verifica la conexión con la API.")
             self.vista.lbl_estado_params.setStyleSheet("color: #EF4444; font-size: 13px; font-weight: bold;")
 
-    def eliminar_medicion_seleccionada(self):
-        """Elimina la medición seleccionada en la tabla de historial."""
-        fila = self.vista.tabla_historial.currentRow()
-        if fila < 0:
-            QMessageBox.warning(self.vista, "Sin Selección", "⚠️ Selecciona una fila del historial primero.")
-            return
-        id_item = self.vista.tabla_historial.item(fila, 0)
-        if not id_item:
-            return
-        id_lectura = id_item.text()
-        respuesta = QMessageBox.question(
-            self.vista, "⚠️ Confirmar Eliminación",
-            f"¿Estás seguro de eliminar la medición con ID {id_lectura}?\nEsta acción no se puede deshacer.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-        )
-        if respuesta == QMessageBox.StandardButton.Yes:
-            exito = self.modelo.eliminar_medicion(int(id_lectura))
-            if exito:
-                QMessageBox.information(self.vista, "Eliminado", f"✅ Medición ID {id_lectura} eliminada correctamente.")
-                self.historial_cache = [d for d in self.historial_cache if str(d[0]) != id_lectura]
-                self.actualizar_tablas()
-            else:
-                QMessageBox.critical(self.vista, "Error", "❌ No se pudo eliminar la medición. Verifica la conexión con la API.")
+    def forzar_riego_manual(self):
+        """Envía comando de riego forzado a la API para que el ESP32 lo recoja en su próximo ciclo de polling."""
+        duracion = self.vista.spin_duracion_riego.value()
+        self.vista.lbl_estado_riego.setText("⏳ Enviando comando...")
+        self.vista.lbl_estado_riego.setStyleSheet("color: #38BDF8; font-size: 12px; font-weight: bold; background: transparent;")
+        exito = self.modelo.forzar_riego(id_sector=1, duracion_seg=duracion)
+        if exito:
+            self.vista.lbl_estado_riego.setText(
+                f"✅ Comando enviado.\nEl ESP32 regará {duracion}s en su próximo ciclo."
+            )
+            self.vista.lbl_estado_riego.setStyleSheet("color: #10B981; font-size: 12px; font-weight: bold; background: transparent;")
+        else:
+            self.vista.lbl_estado_riego.setText("❌ Error al enviar el comando.\nVerifica la conexión con la API.")
+            self.vista.lbl_estado_riego.setStyleSheet("color: #EF4444; font-size: 12px; font-weight: bold; background: transparent;")
 
-    def eliminar_alerta_seleccionada(self):
-        """Elimina la alerta seleccionada en la tabla de alertas."""
-        fila = self.vista.tabla_alertas.currentRow()
-        if fila < 0:
-            QMessageBox.warning(self.vista, "Sin Selección", "⚠️ Selecciona una fila de alertas primero.")
+    def _toggle_sel_todo_historial(self, marcado: bool):
+        """Marca o desmarca todos los checkboxes visibles de la tabla de historial."""
+        tabla = self.vista.tabla_historial
+        for fila in range(tabla.rowCount()):
+            if not tabla.isRowHidden(fila):
+                contenedor = tabla.cellWidget(fila, 0)
+                if contenedor:
+                    chk = contenedor.findChild(QCheckBox)
+                    if chk:
+                        chk.setChecked(marcado)
+        etiqueta = "\u2612\ufe0f  Deseleccionar Todo" if marcado else "\u2611\ufe0f  Seleccionar Todo"
+        self.vista.btn_sel_todo_historial.setText(etiqueta)
+
+    def eliminar_mediciones_seleccionadas(self):
+        """Elimina todas las mediciones cuyo checkbox está marcado."""
+        tabla = self.vista.tabla_historial
+        filas_marcadas = []
+        for fila in range(tabla.rowCount()):
+            contenedor = tabla.cellWidget(fila, 0)
+            if contenedor:
+                chk = contenedor.findChild(QCheckBox)
+                if chk and chk.isChecked() and not tabla.isRowHidden(fila):
+                    filas_marcadas.append(fila)
+
+        if not filas_marcadas:
+            QMessageBox.warning(self.vista, "Sin Selección",
+                                "⚠️ Marca al menos una medición con el checkbox primero.")
             return
-        # La columna 0 de alertas es 'Hora' (usada como referencia visual)
-        # El ID real viene del cache en la posición de la fila
-        if fila >= len(self.alertas_cache):
-            return
-        alerta_raw = self.alertas_cache[fila]
-        # alertas_cache contiene tuplas; necesitamos el id_alerta del raw de la API
-        # Para eso re-consultamos directamente usando el índice del cache
-        # NOTA: el cache de alertas no guarda el id directamente; lo obtenemos del modelo
-        alertas_raw_api = self.modelo.obtener_alertas_con_id()
-        if not alertas_raw_api or fila >= len(alertas_raw_api):
-            QMessageBox.critical(self.vista, "Error", "❌ No se pudo obtener el ID de la alerta.")
-            return
-        id_alerta = alertas_raw_api[fila]["id_alerta"]
+
         respuesta = QMessageBox.question(
             self.vista, "⚠️ Confirmar Eliminación",
-            f"¿Estás seguro de eliminar esta alerta?\nEsta acción no se puede deshacer.",
+            f"¿Estás seguro de eliminar {len(filas_marcadas)} medición(es) seleccionada(s)?\nEsta acción no se puede deshacer.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
-        if respuesta == QMessageBox.StandardButton.Yes:
-            exito = self.modelo.eliminar_alerta(id_alerta)
-            if exito:
-                QMessageBox.information(self.vista, "Eliminado", f"✅ Alerta eliminada correctamente.")
-                self.alertas_cache.pop(fila)
-                self.actualizar_tablas()
+        if respuesta != QMessageBox.StandardButton.Yes:
+            return
+
+        eliminadas = 0
+        errores = 0
+        ids_eliminados = []
+        for fila in filas_marcadas:
+            # ID está ahora en columna 1
+            id_item = tabla.item(fila, 1)
+            if not id_item:
+                continue
+            id_lectura = id_item.text()
+            if self.modelo.eliminar_medicion(int(id_lectura)):
+                eliminadas += 1
+                ids_eliminados.append(id_lectura)
             else:
-                QMessageBox.critical(self.vista, "Error", "❌ No se pudo eliminar la alerta. Verifica la conexión con la API.")
+                errores += 1
+
+        if eliminadas > 0:
+            self.historial_cache = [d for d in self.historial_cache
+                                    if str(d[0]) not in ids_eliminados]
+            self.actualizar_tablas()
+            msg = f"✅ {eliminadas} medición(es) eliminada(s) correctamente."
+            if errores:
+                msg += f"\n⚠️ {errores} medición(es) no pudieron eliminarse."
+            QMessageBox.information(self.vista, "Eliminación Completada", msg)
+        else:
+            QMessageBox.critical(self.vista, "Error",
+                                 "❌ No se pudo eliminar ninguna medición. Verifica la conexión con la API.")
+
+    def _toggle_sel_todo_alertas(self, marcado: bool):
+        """Marca o desmarca todos los checkboxes visibles de la tabla de alertas."""
+        tabla = self.vista.tabla_alertas
+        for fila in range(tabla.rowCount()):
+            if not tabla.isRowHidden(fila):
+                contenedor = tabla.cellWidget(fila, 0)
+                if contenedor:
+                    chk = contenedor.findChild(QCheckBox)
+                    if chk:
+                        chk.setChecked(marcado)
+        etiqueta = "\u2612\ufe0f  Deseleccionar Todo" if marcado else "\u2611\ufe0f  Seleccionar Todo"
+        self.vista.btn_sel_todo_alertas.setText(etiqueta)
+
+    def eliminar_alertas_seleccionadas(self):
+        """Elimina todas las alertas cuyo checkbox está marcado."""
+        tabla = self.vista.tabla_alertas
+        filas_marcadas = []
+        for fila in range(tabla.rowCount()):
+            contenedor = tabla.cellWidget(fila, 0)
+            if contenedor:
+                chk = contenedor.findChild(QCheckBox)
+                if chk and chk.isChecked() and not tabla.isRowHidden(fila):
+                    filas_marcadas.append(fila)
+
+        if not filas_marcadas:
+            QMessageBox.warning(self.vista, "Sin Selección",
+                                "⚠️ Marca al menos una alerta con el checkbox primero.")
+            return
+
+        respuesta = QMessageBox.question(
+            self.vista, "⚠️ Confirmar Eliminación",
+            f"¿Estás seguro de eliminar {len(filas_marcadas)} alerta(s) seleccionada(s)?\nEsta acción no se puede deshacer.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if respuesta != QMessageBox.StandardButton.Yes:
+            return
+
+        alertas_raw_api = self.modelo.obtener_alertas_con_id()
+        if not alertas_raw_api:
+            QMessageBox.critical(self.vista, "Error", "❌ No se pudo obtener los IDs de las alertas.")
+            return
+
+        eliminadas = 0
+        errores = 0
+        for fila in filas_marcadas:
+            if fila >= len(alertas_raw_api):
+                continue
+            id_alerta = alertas_raw_api[fila]["id_alerta"]
+            if self.modelo.eliminar_alerta(id_alerta):
+                eliminadas += 1
+            else:
+                errores += 1
+
+        if eliminadas > 0:
+            # Reconstruir cache quitando las filas eliminadas (de mayor a menor para no desfasar índices)
+            for fila in sorted(filas_marcadas, reverse=True):
+                if fila < len(self.alertas_cache):
+                    self.alertas_cache.pop(fila)
+            self.actualizar_tablas()
+            msg = f"✅ {eliminadas} alerta(s) eliminada(s) correctamente."
+            if errores:
+                msg += f"\n⚠️ {errores} alerta(s) no pudieron eliminarse."
+            QMessageBox.information(self.vista, "Eliminación Completada", msg)
+        else:
+            QMessageBox.critical(self.vista, "Error",
+                                 "❌ No se pudo eliminar ninguna alerta. Verifica la conexión con la API.")
 
     def exportar_reporte(self):
         ruta_archivo, _ = QFileDialog.getSaveFileName(self.vista, "Guardar Reporte", "Reporte_SmartVivero.pdf", "PDF Files (*.pdf)")

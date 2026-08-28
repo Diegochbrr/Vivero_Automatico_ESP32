@@ -64,6 +64,11 @@ class UmbralUpdate(BaseModel):
     id_usuario_modifica: int = Field(..., example=1)
 
 
+# Estado en memoria de comandos pendientes por sector (no requiere tabla extra en BD)
+# { id_sector: {"forzar_riego": bool, "duracion_seg": int} }
+_comandos_pendientes: Dict[int, Dict[str, Any]] = {}
+
+
 # =============================================================================
 # CAPA DE PERSISTENCIA Y REPOSITORIO (POO CON CONNECTION POOLING)
 # =============================================================================
@@ -243,6 +248,31 @@ class ViveroRepository:
                 conn.commit()
                 return dict(result)
 
+    # --- COMANDOS ESP32 (en memoria, patrón polling) ---
+    def get_config_esp32(self, id_sector: int) -> Dict[str, Any]:
+        """Devuelve al ESP32 su configuración activa + si hay un comando de riego forzado pendiente."""
+        umbral = self.get_umbral_by_sector(id_sector)
+        if not umbral:
+            raise HTTPException(status_code=404, detail=f"No existe configuración para el sector {id_sector}")
+        cmd = _comandos_pendientes.get(id_sector, {})
+        return {
+            "humedad_min_on": float(umbral["humedad_min_on"]),
+            "humedad_max_off": float(umbral["humedad_max_off"]),
+            "tiempo_max_riego_seg": int(umbral["tiempo_max_riego_seg"]),
+            "forzar_riego": cmd.get("forzar_riego", False),
+            "duracion_forzado_seg": cmd.get("duracion_seg", 30),
+        }
+
+    def set_forzar_riego(self, id_sector: int, duracion_seg: int) -> Dict[str, Any]:
+        """Registra un comando de riego forzado pendiente para que el ESP32 lo consuma."""
+        _comandos_pendientes[id_sector] = {"forzar_riego": True, "duracion_seg": duracion_seg}
+        return {"mensaje": f"Comando forzar riego registrado para sector {id_sector}", "duracion_seg": duracion_seg}
+
+    def clear_forzar_riego(self, id_sector: int) -> Dict[str, Any]:
+        """El ESP32 llama a este endpoint para confirmar que ejecutó el riego forzado y limpia el flag."""
+        _comandos_pendientes.pop(id_sector, None)
+        return {"mensaje": f"Comando de riego forzado limpiado para sector {id_sector}"}
+
 
 # =============================================================================
 # CONTROLADOR Y APLICACIÓN FASTAPI
@@ -332,6 +362,35 @@ def consultar_umbral(id_sector: int):
 @app.put("/api/v1/umbrales/{id_sector}", tags=["Configuración"], dependencies=[Depends(get_api_key)])
 def actualizar_umbral(id_sector: int, umbral: UmbralUpdate):
     return repository.update_umbral(id_sector, umbral)
+
+
+# =============================================================================
+# ENDPOINTS DE COMANDOS PARA EL ESP32 (POLLING PATTERN)
+# =============================================================================
+
+@app.get("/api/v1/comandos/{id_sector}",
+         tags=["Comandos ESP32"],
+         summary="Polling de configuración y comandos pendientes",
+         description="El ESP32 llama a este endpoint cada ciclo para obtener su umbral activo y si hay riego forzado pendiente.")
+def polling_comandos(id_sector: int, api_key: str = Depends(get_api_key)):
+    return repository.get_config_esp32(id_sector)
+
+
+@app.post("/api/v1/comandos/forzar-riego/{id_sector}",
+          status_code=status.HTTP_200_OK,
+          tags=["Comandos ESP32"],
+          summary="Forzar riego desde la app de escritorio",
+          dependencies=[Depends(get_api_key)])
+def forzar_riego(id_sector: int, duracion_seg: int = 30):
+    return repository.set_forzar_riego(id_sector, duracion_seg)
+
+
+@app.delete("/api/v1/comandos/forzar-riego/{id_sector}",
+            tags=["Comandos ESP32"],
+            summary="Confirmar ejecución de riego forzado (llamado por el ESP32)",
+            dependencies=[Depends(get_api_key)])
+def confirmar_riego_forzado(id_sector: int):
+    return repository.clear_forzar_riego(id_sector)
 
 
 if __name__ == "__main__":

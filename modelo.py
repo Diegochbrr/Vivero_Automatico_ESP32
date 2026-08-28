@@ -172,3 +172,16 @@ class ModeloRiego:
         except Exception as e:
             print(f"Error eliminando alerta {id_alerta}: {e}")
             return False
+
+    def forzar_riego(self, id_sector: int = 1, duracion_seg: int = 30) -> bool:
+        """Envía un comando de riego forzado a la API para que el ESP32 lo consuma. Retorna True si fue exitoso."""
+        try:
+            response = requests.post(
+                f"{self.api_url}/comandos/forzar-riego/{id_sector}?duracion_seg={duracion_seg}",
+                headers={"X-API-Key": self.api_key},
+                timeout=5
+            )
+            return response.status_code == 200
+        except Exception as e:
+            print(f"Error enviando comando forzar riego sector {id_sector}: {e}")
+            return False

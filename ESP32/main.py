@@ -15,18 +15,27 @@ PIN_LED_ALERTA      = 4
 ssid = "Wokwi-GUEST"
 password = ""
 
-api_mediciones_url = "https://vivero-automatico-esp32.onrender.com/api/v1/mediciones"
-api_alertas_url = "https://vivero-automatico-esp32.onrender.com/api/v1/alertas"
-api_key = "sv_live_8b3a7f9d2e1c4a5b6f8e7d9c0b1a2f3d"
+API_BASE           = "https://vivero-automatico-esp32.onrender.com/api/v1"
+api_mediciones_url = API_BASE + "/mediciones"
+api_alertas_url    = API_BASE + "/alertas"
+api_comandos_url   = API_BASE + "/comandos/1"          # polling: umbral + forzar riego
+api_ack_riego_url  = API_BASE + "/comandos/forzar-riego/1"  # DELETE para confirmar
+api_key            = "sv_live_8b3a7f9d2e1c4a5b6f8e7d9c0b1a2f3d"
+ID_SECTOR          = 1
+
+# Umbrales con valores por defecto (se sobreescriben al conectar a la API)
+HUM_MIN_ON  = 35.0   # encender bomba si humedad < este valor
+HUM_MAX_OFF = 70.0   # apagar bomba si humedad >= este valor
+TIEMPO_MAX_RIEGO_SEG = 180
 
 # Configurar pines
 adc_humedad = ADC(Pin(PIN_SENSOR_HUMEDAD))
-adc_humedad.atten(ADC.ATTN_11DB) # Para leer hasta 3.3V (0-4095)
+adc_humedad.atten(ADC.ATTN_11DB)  # Para leer hasta 3.3V (0-4095)
 
-pin_nivel_agua = Pin(PIN_NIVEL_AGUA, Pin.IN, Pin.PULL_UP)
+pin_nivel_agua   = Pin(PIN_NIVEL_AGUA, Pin.IN, Pin.PULL_UP)
 pin_boton_manual = Pin(PIN_BOTON_MANUAL, Pin.IN, Pin.PULL_UP)
-rele_bomba = Pin(PIN_RELE_BOMBA, Pin.OUT)
-led_alerta = Pin(PIN_LED_ALERTA, Pin.OUT)
+rele_bomba       = Pin(PIN_RELE_BOMBA, Pin.OUT)
+led_alerta       = Pin(PIN_LED_ALERTA, Pin.OUT)
 
 rele_bomba.value(0)
 led_alerta.value(0)
@@ -50,74 +59,149 @@ print("IP:", wlan.ifconfig()[0])
 
 lcd.clear()
 
-ultimo_envio = time.ticks_ms()
-intervalo_envio = 5000
+ultimo_envio   = time.ticks_ms()
+intervalo_envio = 5000  # ms entre envíos a la API
+
+HEADERS = {
+    "Content-Type": "application/json",
+    "X-API-Key": api_key
+}
+
+
+def consultar_config_y_comandos():
+    """
+    Consulta GET /api/v1/comandos/{id_sector} para obtener:
+      - humedad_min_on, humedad_max_off, tiempo_max_riego_seg (umbrales activos)
+      - forzar_riego (bool), duracion_forzado_seg (int)
+    Retorna el dict JSON o None si hay error.
+    """
+    global HUM_MIN_ON, HUM_MAX_OFF, TIEMPO_MAX_RIEGO_SEG
+    try:
+        r = urequests.get(api_comandos_url, headers=HEADERS, timeout=5)
+        if r.status_code == 200:
+            data = ujson.loads(r.text)
+            r.close()
+            # Actualizar umbrales locales con los valores de la API
+            HUM_MIN_ON           = float(data.get("humedad_min_on",  HUM_MIN_ON))
+            HUM_MAX_OFF          = float(data.get("humedad_max_off", HUM_MAX_OFF))
+            TIEMPO_MAX_RIEGO_SEG = int(data.get("tiempo_max_riego_seg", TIEMPO_MAX_RIEGO_SEG))
+            print("[Config] HumMin={:.1f}% HumMax={:.1f}% T={}s Forzar={}".format(
+                HUM_MIN_ON, HUM_MAX_OFF, TIEMPO_MAX_RIEGO_SEG,
+                data.get("forzar_riego", False)))
+            return data
+        else:
+            r.close()
+    except Exception as e:
+        print("Error consultando config/comandos:", e)
+    return None
+
+
+def confirmar_riego_forzado():
+    """DELETE /api/v1/comandos/forzar-riego/{id_sector} — limpia el flag en la API."""
+    try:
+        r = urequests.request("DELETE", api_ack_riego_url, headers=HEADERS, timeout=5)
+        print("[ACK] Riego forzado confirmado, status:", r.status_code)
+        r.close()
+    except Exception as e:
+        print("Error confirmando riego forzado:", e)
+
 
 def enviar_datos_api(humedad, adc_crudo, nivel_agua_ok):
-    if wlan.isconnected():
-        headers = {
-            "Content-Type": "application/json",
-            "X-API-Key": api_key
+    if not wlan.isconnected():
+        print("WiFi desconectado")
+        return
+
+    # 1. Telemetría de humedad
+    payload = {
+        "id_sensor": "SEN-CAP-S01",
+        "id_sector": ID_SECTOR,
+        "humedad_porcentaje": round(humedad, 2),
+        "valor_adc_crudo": adc_crudo
+    }
+    try:
+        response = urequests.post(api_mediciones_url, headers=HEADERS, json=payload, timeout=5)
+        print("HTTP Mediciones:", response.status_code)
+        response.close()
+    except Exception as e:
+        print("Error HTTP Mediciones:", e)
+
+    # 2. Alerta crítica de falta de agua
+    if not nivel_agua_ok:
+        alerta_payload = {
+            "id_sector": ID_SECTOR,
+            "nivel_detectado": "CRITICO_VACIO",
+            "bomba_bloqueada": True,
+            "observacion": "Alerta de nivel de agua detectada por ESP32"
         }
-        
-        # 1. Enviar telemetría de humedad a la nube (Render)
-        payload = {
-            "id_sensor": "SEN-CAP-S01",
-            "id_sector": 1,
-            "humedad_porcentaje": round(humedad, 2),
-            "valor_adc_crudo": adc_crudo
-        }
-        
         try:
-            # En MicroPython usamos urequests
-            # timeout para evitar que se congele si Render está dormido
-            response = urequests.post(api_mediciones_url, headers=headers, json=payload, timeout=5)
-            print("📡 HTTP Mediciones:", response.status_code)
-            response.close()
+            res_alerta = urequests.post(api_alertas_url, headers=HEADERS, json=alerta_payload, timeout=5)
+            print("HTTP Alerta Nivel:", res_alerta.status_code)
+            res_alerta.close()
         except Exception as e:
-            print("❌ Error HTTP Mediciones:", e)
+            print("Error HTTP Alerta:", e)
 
-        # 2. Enviar alerta crítica de falta de agua
-        if not nivel_agua_ok:
-            alerta_payload = {
-                "id_sector": 1,
-                "nivel_detectado": "CRITICO_VACIO",
-                "bomba_bloqueada": True,
-                "observacion": "Alerta de nivel de agua detectada por ESP32"
-            }
-            try:
-                res_alerta = urequests.post(api_alertas_url, headers=headers, json=alerta_payload, timeout=5)
-                print("🚨 HTTP Alerta Nivel:", res_alerta.status_code)
-                res_alerta.close()
-            except Exception as e:
-                print("❌ Error HTTP Alerta Nivel:", e)
-    else:
-        print("⚠️ WiFi desconectado")
 
+# ── Loop principal ────────────────────────────────────────────────────────────
 while True:
-    # Lectura analógica con sobremuestreo (promedio de 10 lecturas) para evitar saltos o datos incorrectos
+    # Lectura analógica con sobremuestreo (promedio de 10 lecturas)
     suma_adc = 0
     for _ in range(10):
         suma_adc += adc_humedad.read()
         time.sleep_ms(5)
-    
-    raw_adc = suma_adc // 10
-    porcentaje_humedad = (raw_adc / 4095.0) * 100.0
+
+    raw_adc             = suma_adc // 10
+    porcentaje_humedad  = (raw_adc / 4095.0) * 100.0
 
     # Estados de entrada
     nivel_agua_ok = (pin_nivel_agua.value() == 1)
-    boton_manual = (pin_boton_manual.value() == 0)
+    boton_manual  = (pin_boton_manual.value() == 0)
 
     activar_bomba = False
-    alerta_nivel = False
+    alerta_nivel  = False
 
-    # Lógica de control
+    if time.ticks_diff(time.ticks_ms(), ultimo_envio) >= intervalo_envio:
+        ultimo_envio = time.ticks_ms()
+
+        # ── Consultar configuración y comandos pendientes ─────────────────────
+        config = consultar_config_y_comandos() if wlan.isconnected() else None
+
+        forzar = False
+        duracion_forzado = 30
+        if config:
+            forzar           = bool(config.get("forzar_riego", False))
+            duracion_forzado = int(config.get("duracion_forzado_seg", 30))
+
+        # ── Lógica de control ─────────────────────────────────────────────────
+        if not nivel_agua_ok:
+            alerta_nivel  = True
+            activar_bomba = False
+        else:
+            # Riego si humedad baja el umbral mínimo, o botón físico, o comando forzado
+            if porcentaje_humedad < HUM_MIN_ON or boton_manual or forzar:
+                activar_bomba = True
+
+        # ── Si hay riego forzado, regar la duración indicada y confirmar ──────
+        if forzar and nivel_agua_ok:
+            print("[Forzar] Regando {}s por comando de la app".format(duracion_forzado))
+            rele_bomba.value(1)
+            lcd.move_to(0, 1)
+            lcd.putstr("Forzado: REGANDO")
+            time.sleep(duracion_forzado)
+            rele_bomba.value(0)
+            confirmar_riego_forzado()  # limpia el flag en la API
+            activar_bomba = False      # reset para no doble-activar
+
+        # ── Envío de telemetría ───────────────────────────────────────────────
+        enviar_datos_api(porcentaje_humedad, raw_adc, nivel_agua_ok)
+
+    # ── Lógica de control continua (entre envíos) ─────────────────────────────
     if not nivel_agua_ok:
-        alerta_nivel = True
+        alerta_nivel  = True
         activar_bomba = False
-    else:
-        if porcentaje_humedad < 35.0 or boton_manual:
-            activar_bomba = True
+    elif porcentaje_humedad < HUM_MIN_ON or boton_manual:
+        activar_bomba = True
+    elif porcentaje_humedad >= HUM_MAX_OFF:
+        activar_bomba = False  # cortar riego si supera el máximo
 
     # Actualización de actuadores
     rele_bomba.value(1 if activar_bomba else 0)
@@ -134,11 +218,5 @@ while True:
         lcd.putstr("Bomba: REGANDO  ")
     else:
         lcd.putstr("Bomba: APAGADA  ")
-
-    # Envío a la API cada 5 segundos
-    # ticks_diff maneja correctamente el overflow de milisegundos
-    if time.ticks_diff(time.ticks_ms(), ultimo_envio) >= intervalo_envio:
-        ultimo_envio = time.ticks_ms()
-        enviar_datos_api(porcentaje_humedad, raw_adc, nivel_agua_ok)
 
     time.sleep(0.2)

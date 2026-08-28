@@ -4,7 +4,8 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-                             QLabel, QPushButton, QTableWidget, QHeaderView, QFrame,
+                             QLabel, QPushButton, QTableWidget, QTableWidgetItem,
+                             QHeaderView, QFrame, QCheckBox, QHBoxLayout,
                              QProgressBar, QLineEdit, QStackedWidget, QFormLayout, QSpinBox)
 from PyQt6.QtCore import Qt, QPropertyAnimation, QEasingCurve
 
@@ -533,8 +534,46 @@ class VistaRiego(QMainWindow):
         l_turb.addWidget(self.lbl_valor_turb)
         l_turb.addWidget(self.progreso_turb)
 
+        # Tarjeta Control Manual
+        frame_ctrl = QFrame()
+        frame_ctrl.setObjectName("card")
+        l_ctrl = QVBoxLayout(frame_ctrl)
+        l_ctrl.setContentsMargins(20, 18, 20, 18)
+        l_ctrl.setSpacing(8)
+        lbl_ctrl = QLabel("\U0001f4a7  CONTROL MANUAL")
+        self._reg(lbl_ctrl, *self._e("lbl_card"))
+
+        self.btn_forzar_riego = QPushButton("\U0001f4a7  Forzar Riego")
+        self.btn_forzar_riego.setStyleSheet(
+            "background-color: qlineargradient(x1:0,y1:0,x2:1,y2:0,"
+            "stop:0 #065F46,stop:1 #10B981);"
+            "color: white; border-radius: 8px; padding: 10px 16px;"
+            "font-weight: 800; font-size: 14px; border: none;"
+        )
+        self.btn_forzar_riego.setCursor(Qt.CursorShape.PointingHandCursor)
+
+        lbl_dur = QLabel("Duración (seg):")
+        self._reg(lbl_dur, *self._e("lbl_card"))
+        self.spin_duracion_riego = QSpinBox()
+        self.spin_duracion_riego.setRange(5, 600)
+        self.spin_duracion_riego.setValue(30)
+        self.spin_duracion_riego.setSuffix(" seg")
+        self.spin_duracion_riego.setFixedWidth(110)
+
+        self.lbl_estado_riego = QLabel("")
+        self.lbl_estado_riego.setStyleSheet("font-size: 12px; font-weight: 700; background: transparent;")
+        self.lbl_estado_riego.setWordWrap(True)
+
+        l_ctrl.addWidget(lbl_ctrl)
+        l_ctrl.addWidget(self.btn_forzar_riego)
+        l_ctrl.addWidget(lbl_dur)
+        l_ctrl.addWidget(self.spin_duracion_riego)
+        l_ctrl.addWidget(self.lbl_estado_riego)
+        l_ctrl.addStretch()
+
         layout_tarjetas.addWidget(frame_temp)
         layout_tarjetas.addWidget(frame_turb)
+        layout_tarjetas.addWidget(frame_ctrl)
         layout_principal.addLayout(layout_tarjetas)
 
         # --- Tablas ---
@@ -556,22 +595,39 @@ class VistaRiego(QMainWindow):
         self.txt_buscar_alertas.setPlaceholderText("🔍  Buscar alertas...")
         v_alertas.addWidget(self.txt_buscar_alertas)
 
-        self.tabla_alertas = QTableWidget(0, 5)
-        self.tabla_alertas.setHorizontalHeaderLabels(["Fecha / Hora", "Tipo", "Sensor", "Valor", "Estado"])
+        self.tabla_alertas = QTableWidget(0, 6)
+        self.tabla_alertas.setHorizontalHeaderLabels(["", "Fecha / Hora", "Tipo", "Sensor", "Valor", "Estado"])
         self.tabla_alertas.setTextElideMode(Qt.TextElideMode.ElideNone)
         self.tabla_alertas.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         header_alertas = self.tabla_alertas.horizontalHeader()
-        header_alertas.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
-        header_alertas.setStretchLastSection(True)
+        header_alertas.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+        self.tabla_alertas.setColumnWidth(0, 36)
+        header_alertas.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        header_alertas.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header_alertas.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        header_alertas.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        header_alertas.setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
         self.tabla_alertas.setAlternatingRowColors(True)
         self.tabla_alertas.verticalHeader().setVisible(False)
         self.tabla_alertas.setShowGrid(True)
         v_alertas.addWidget(self.tabla_alertas)
 
-        self.btn_eliminar_alerta = QPushButton("🗑️  Eliminar Seleccionada")
+        # Barra inferior alertas: seleccionar todo + eliminar
+        barra_alertas = QHBoxLayout()
+        barra_alertas.setSpacing(8)
+
+        self.btn_sel_todo_alertas = QPushButton("\u2611\ufe0f  Seleccionar Todo")
+        self.btn_sel_todo_alertas.setProperty("class", "btn_toggle")
+        self.btn_sel_todo_alertas.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_sel_todo_alertas.setCheckable(True)
+        barra_alertas.addWidget(self.btn_sel_todo_alertas)
+
+        self.btn_eliminar_alerta = QPushButton("\U0001f5d1\ufe0f  Eliminar Seleccionadas")
         self.btn_eliminar_alerta.setProperty("class", "btn_peligro")
         self.btn_eliminar_alerta.setCursor(Qt.CursorShape.PointingHandCursor)
-        v_alertas.addWidget(self.btn_eliminar_alerta)
+        barra_alertas.addWidget(self.btn_eliminar_alerta)
+
+        v_alertas.addLayout(barra_alertas)
 
         # Panel Historial
         frame_historial = QFrame()
@@ -588,23 +644,41 @@ class VistaRiego(QMainWindow):
         self.txt_buscar_historial.setPlaceholderText("🔍  Buscar en el historial...")
         v_historial.addWidget(self.txt_buscar_historial)
 
-        self.tabla_historial = QTableWidget(0, 6)
+        self.tabla_historial = QTableWidget(0, 7)
         self.tabla_historial.setHorizontalHeaderLabels(
-            ["ID", "Fecha / Hora", "Ubicación", "Humedad (%)", "Valor ADC", "Sensor"])
+            ["", "ID", "Fecha / Hora", "Ubicación", "Humedad (%)", "Valor ADC", "Sensor"])
         self.tabla_historial.setTextElideMode(Qt.TextElideMode.ElideNone)
         self.tabla_historial.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         header_historial = self.tabla_historial.horizontalHeader()
-        header_historial.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
-        header_historial.setStretchLastSection(True)
+        header_historial.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+        self.tabla_historial.setColumnWidth(0, 36)
+        header_historial.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        header_historial.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header_historial.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        header_historial.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        header_historial.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
+        header_historial.setSectionResizeMode(6, QHeaderView.ResizeMode.Stretch)
         self.tabla_historial.setAlternatingRowColors(True)
         self.tabla_historial.verticalHeader().setVisible(False)
         self.tabla_historial.setShowGrid(True)
         v_historial.addWidget(self.tabla_historial)
 
-        self.btn_eliminar_medicion = QPushButton("🗑️  Eliminar Seleccionada")
+        # Barra inferior historial: seleccionar todo + eliminar
+        barra_historial = QHBoxLayout()
+        barra_historial.setSpacing(8)
+
+        self.btn_sel_todo_historial = QPushButton("\u2611\ufe0f  Seleccionar Todo")
+        self.btn_sel_todo_historial.setProperty("class", "btn_toggle")
+        self.btn_sel_todo_historial.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_sel_todo_historial.setCheckable(True)
+        barra_historial.addWidget(self.btn_sel_todo_historial)
+
+        self.btn_eliminar_medicion = QPushButton("\U0001f5d1\ufe0f  Eliminar Seleccionadas")
         self.btn_eliminar_medicion.setProperty("class", "btn_peligro")
         self.btn_eliminar_medicion.setCursor(Qt.CursorShape.PointingHandCursor)
-        v_historial.addWidget(self.btn_eliminar_medicion)
+        barra_historial.addWidget(self.btn_eliminar_medicion)
+
+        v_historial.addLayout(barra_historial)
 
         layout_tablas.addWidget(frame_alertas, 1)
         layout_tablas.addWidget(frame_historial, 1)
