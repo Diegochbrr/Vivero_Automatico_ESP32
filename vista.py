@@ -1080,12 +1080,6 @@ class VistaRiego(QMainWindow):
 
         # Botones de Acción sobre la Tabla
         h_btn_tab = QHBoxLayout()
-        self.btn_sel_todo_usuarios = QPushButton("☑️  Seleccionar Todo")
-        self.btn_sel_todo_usuarios.setCheckable(True)
-        self.btn_sel_todo_usuarios.setProperty("class", "btn_toggle")
-        self.btn_sel_todo_usuarios.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_sel_todo_usuarios.setFixedWidth(170)
-
         self.btn_editar_usuario = QPushButton("✏️  Editar Seleccionado")
         self.btn_editar_usuario.setProperty("class", "btn_accion")
         self.btn_editar_usuario.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -1101,7 +1095,6 @@ class VistaRiego(QMainWindow):
         self.btn_refrescar_usuarios.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_refrescar_usuarios.setFixedWidth(150)
 
-        h_btn_tab.addWidget(self.btn_sel_todo_usuarios)
         h_btn_tab.addWidget(self.btn_editar_usuario)
         h_btn_tab.addWidget(self.btn_eliminar_usuario)
         h_btn_tab.addWidget(self.btn_refrescar_usuarios)
