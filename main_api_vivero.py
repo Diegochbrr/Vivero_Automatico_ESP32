@@ -112,6 +112,7 @@ class LoginRequest(BaseModel):
 # Estado en memoria de comandos pendientes por sector (no requiere tabla extra en BD)
 # { id_sector: {"forzar_riego": bool, "duracion_seg": int} }
 _comandos_pendientes: Dict[int, Dict[str, Any]] = {}
+_sector_activo_sistema: int = 1
 
 
 # =============================================================================
@@ -627,6 +628,24 @@ def forzar_riego(id_sector: int, duracion_seg: int = 30):
             dependencies=[Depends(get_api_key)])
 def confirmar_riego_forzado(id_sector: int):
     return repository.clear_forzar_riego(id_sector)
+
+
+@app.get("/api/v1/sistema/sector-activo",
+         tags=["Comandos ESP32"],
+         summary="Consultar sector activo actual",
+         description="El ESP32 llama a este endpoint para saber qué sector está activo en la app de escritorio.")
+def consultar_sector_activo_sistema():
+    return {"sector_activo": _sector_activo_sistema}
+
+
+@app.put("/api/v1/sistema/sector-activo/{id_sector}",
+         tags=["Comandos ESP32"],
+         summary="Fijar sector activo del sistema",
+         dependencies=[Depends(get_api_key)])
+def fijar_sector_activo_sistema(id_sector: int):
+    global _sector_activo_sistema
+    _sector_activo_sistema = id_sector
+    return {"mensaje": f"Sector activo del sistema actualizado a {id_sector}", "sector_activo": id_sector}
 
 
 # =============================================================================

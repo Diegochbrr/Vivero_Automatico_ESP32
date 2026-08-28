@@ -420,6 +420,9 @@ class ControladorRiego:
         # Sincronizar el selector de sector en la página de parámetros
         self.vista.spin_sector.setValue(self.sector_activo)
 
+        # Notificar a la API para sincronizar con el ESP32 / Wokwi
+        self.modelo.fijar_sector_activo(self.sector_activo)
+
         # Forzar actualización inmediata de telemetría y tablas
         nuevo_historial = self.modelo.obtener_historial(self.sector_activo)
         self.actualizar_interfaz(nuevo_historial, self.alertas_cache)
@@ -484,6 +487,21 @@ class ControladorRiego:
             "rol": user.get("rol", "OPERADOR")
         }
         self.vista.btn_badge_sesion.setText(f"👤  {self.usuario_sesion['nombre']} ({self.usuario_sesion['rol']})  ▾")
+
+        # Auto-seleccionar automáticamente el sector asignado al miembro
+        correo_u = self.usuario_sesion.get("correo", "").strip().lower()
+        nombre_u = self.usuario_sesion.get("nombre", "").strip().lower()
+        sector_encontrado_idx = -1
+
+        for idx, s in enumerate(self.sectores_cache):
+            sec_correo = s.get("encargado_correo", "").strip().lower()
+            sec_nombre = s.get("encargado_nombre", "").strip().lower()
+            if (correo_u and correo_u == sec_correo) or (nombre_u and (nombre_u in sec_nombre or sec_nombre in nombre_u)):
+                sector_encontrado_idx = idx
+                break
+
+        if sector_encontrado_idx >= 0 and sector_encontrado_idx != self.vista.combo_sector.currentIndex():
+            self.vista.combo_sector.setCurrentIndex(sector_encontrado_idx)
 
     def cambiar_estado_presencia(self, index: int):
         """Actualiza los estilos visuales cuando el operador cambia su estado (En Línea, Ausente, En Campo)."""

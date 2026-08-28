@@ -247,6 +247,19 @@ class ModeloRiego:
             }
         ]
 
+    def fijar_sector_activo(self, id_sector: int) -> bool:
+        """Notifica a la API qué sector está activo para que el ESP32 en Wokwi se sincronice."""
+        try:
+            res = requests.put(
+                f"{self.api_url}/sistema/sector-activo/{id_sector}",
+                headers={"X-API-Key": self.api_key},
+                timeout=3
+            )
+            return res.status_code == 200
+        except Exception as e:
+            print(f"Error fijando sector activo: {e}")
+            return False
+
     def actualizar_sector(self, id_sector: int, nombre_sector: str, encargado_nombre: str, encargado_correo: str, encargado_rol: str, tipo_cultivo: str, descripcion: str = "") -> bool:
         """Actualiza la información del sector y su encargado."""
         try:

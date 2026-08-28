@@ -70,40 +70,55 @@ HEADERS = {
 
 def consultar_config_y_comandos():
     """
-    Consulta GET /api/v1/comandos/{id_sector} para obtener:
-      - humedad_min_on, humedad_max_off, tiempo_max_riego_seg (umbrales activos)
-      - forzar_riego (bool), duracion_forzado_seg (int)
-    Retorna el dict JSON o None si hay error.
+    1. Consulta GET /api/v1/sistema/sector-activo para saber qué sector está operando la app.
+    2. Consulta GET /api/v1/comandos/{ID_SECTOR} para leer umbrales y si hay forzado de riego.
     """
-    global HUM_MIN_ON, HUM_MAX_OFF, TIEMPO_MAX_RIEGO_SEG
+    global HUM_MIN_ON, HUM_MAX_OFF, TIEMPO_MAX_RIEGO_SEG, ID_SECTOR
+    
+    # 1. Sincronizar Sector Activo
     try:
-        r = urequests.get(api_comandos_url, headers=HEADERS, timeout=5)
+        r_sec = urequests.get(API_BASE + "/sistema/sector-activo", headers=HEADERS, timeout=4)
+        if r_sec.status_code == 200:
+            d_sec = ujson.loads(r_sec.text)
+            nuevo_sec = int(d_sec.get("sector_activo", ID_SECTOR))
+            if nuevo_sec != ID_SECTOR:
+                ID_SECTOR = nuevo_sec
+                print("🔄 [Sector] ESP32 sincronizado a Sector {}".format(ID_SECTOR))
+            r_sec.close()
+        else:
+            r_sec.close()
+    except Exception as e:
+        print("⚠️ Error consultando sector activo:", e)
+
+    # 2. Consultar Umbrales y Comandos del sector activo
+    try:
+        url_cmd = "{}/comandos/{}".format(API_BASE, ID_SECTOR)
+        r = urequests.get(url_cmd, headers=HEADERS, timeout=5)
         if r.status_code == 200:
             data = ujson.loads(r.text)
             r.close()
-            # Actualizar umbrales locales con los valores de la API
             HUM_MIN_ON           = float(data.get("humedad_min_on",  HUM_MIN_ON))
             HUM_MAX_OFF          = float(data.get("humedad_max_off", HUM_MAX_OFF))
             TIEMPO_MAX_RIEGO_SEG = int(data.get("tiempo_max_riego_seg", TIEMPO_MAX_RIEGO_SEG))
-            print("[Config] HumMin={:.1f}% HumMax={:.1f}% T={}s Forzar={}".format(
-                HUM_MIN_ON, HUM_MAX_OFF, TIEMPO_MAX_RIEGO_SEG,
-                data.get("forzar_riego", False)))
+            print("[Sector {}] Min={:.1f}% Max={:.1f}% Forzar={}".format(
+                ID_SECTOR, HUM_MIN_ON, HUM_MAX_OFF, data.get("forzar_riego", False)))
             return data
         else:
             r.close()
     except Exception as e:
-        print("Error consultando config/comandos:", e)
+        print("⚠️ Error consultando config/comandos:", e)
     return None
 
 
 def confirmar_riego_forzado():
-    """DELETE /api/v1/comandos/forzar-riego/{id_sector} — limpia el flag en la API."""
+    """DELETE /api/v1/comandos/forzar-riego/{ID_SECTOR} — limpia el flag en la API."""
     try:
-        r = urequests.request("DELETE", api_ack_riego_url, headers=HEADERS, timeout=5)
-        print("[ACK] Riego forzado confirmado, status:", r.status_code)
+        url_ack = "{}/comandos/forzar-riego/{}".format(API_BASE, ID_SECTOR)
+        r = urequests.request("DELETE", url_ack, headers=HEADERS, timeout=5)
+        print("[ACK] Riego forzado sector {} confirmado: {}".format(ID_SECTOR, r.status_code))
         r.close()
     except Exception as e:
-        print("Error confirmando riego forzado:", e)
+        print("⚠️ Error confirmando riego forzado:", e)
 
 
 def enviar_datos_api(humedad, adc_crudo, nivel_agua_ok):
@@ -209,7 +224,7 @@ while True:
 
     # Interfaz LCD
     lcd.move_to(0, 0)
-    lcd.putstr("Hum: {:>5.1f}%   ".format(porcentaje_humedad))
+    lcd.putstr("S{} Hum:{:>5.1f}%  ".format(ID_SECTOR, porcentaje_humedad))
 
     lcd.move_to(0, 1)
     if alerta_nivel:
