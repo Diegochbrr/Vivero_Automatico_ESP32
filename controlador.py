@@ -86,6 +86,7 @@ class ControladorRiego:
         self.vista.btn_editar_usuario.clicked.connect(self.iniciar_edicion_usuario)
         self.vista.btn_eliminar_usuario.clicked.connect(self.eliminar_usuario_seleccionado)
         self.vista.btn_refrescar_usuarios.clicked.connect(self.cargar_tabla_usuarios)
+        self.vista.btn_sel_todo_usuarios.toggled.connect(self._toggle_sel_todo_usuarios)
         self.vista.tabla_usuarios.cellDoubleClicked.connect(lambda row, col: self.iniciar_edicion_usuario())
 
         # Iniciar Carga de Sectores y Usuarios
@@ -561,13 +562,14 @@ class ControladorRiego:
 
         # 4. Gestión de Personal (Solo Administrador)
         self.vista.btn_guardar_usuario.setEnabled(es_admin)
+        self.vista.btn_sel_todo_usuarios.setEnabled(es_admin)
         self.vista.btn_editar_usuario.setEnabled(es_admin)
         self.vista.btn_eliminar_usuario.setEnabled(es_admin)
         self.vista.txt_user_nombre.setEnabled(es_admin)
         self.vista.txt_user_correo.setEnabled(es_admin)
         self.vista.txt_user_pass.setEnabled(es_admin)
         self.vista.combo_user_rol.setEnabled(es_admin)
-        tooltip_edit = "Editar el usuario seleccionado de la tabla" if es_admin else "🔒 Bloqueado: Solo Administradores pueden editar miembros."
+        tooltip_edit = "Editar el usuario marcado en la tabla" if es_admin else "🔒 Bloqueado: Solo Administradores pueden editar miembros."
         self.vista.btn_editar_usuario.setToolTip(tooltip_edit)
         if not es_admin:
             self.vista.lbl_estado_usuarios.setText(f"🔒 Rol {rol}: Solo consulta. Solo Administradores pueden registrar, editar o eliminar miembros.")
@@ -586,11 +588,16 @@ class ControladorRiego:
     # =========================================================================
 
     def cargar_tabla_usuarios(self):
-        """Obtiene la lista de usuarios de la API y puebla la tabla de personal."""
+        """Obtiene la lista de usuarios de la API y puebla la tabla con checkboxes centrados."""
         self.usuarios_cache = self.modelo.obtener_usuarios()
         self.vista.tabla_usuarios.setRowCount(0)
         for fila_idx, u in enumerate(self.usuarios_cache):
             self.vista.tabla_usuarios.insertRow(fila_idx)
+
+            # Columna 0: Checkbox centrado
+            contenedor_u, _ = self._make_chk_widget()
+            self.vista.tabla_usuarios.setCellWidget(fila_idx, 0, contenedor_u)
+
             id_item = QTableWidgetItem(str(u.get("id_usuario", "")))
             id_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             nom_item = QTableWidgetItem(str(u.get("nombre", "")))
@@ -604,21 +611,50 @@ class ControladorRiego:
             f_item = QTableWidgetItem(f_raw)
             f_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
 
-            self.vista.tabla_usuarios.setItem(fila_idx, 0, id_item)
-            self.vista.tabla_usuarios.setItem(fila_idx, 1, nom_item)
-            self.vista.tabla_usuarios.setItem(fila_idx, 2, cor_item)
-            self.vista.tabla_usuarios.setItem(fila_idx, 3, rol_item)
-            self.vista.tabla_usuarios.setItem(fila_idx, 4, est_item)
-            self.vista.tabla_usuarios.setItem(fila_idx, 5, f_item)
+            self.vista.tabla_usuarios.setItem(fila_idx, 1, id_item)
+            self.vista.tabla_usuarios.setItem(fila_idx, 2, nom_item)
+            self.vista.tabla_usuarios.setItem(fila_idx, 3, cor_item)
+            self.vista.tabla_usuarios.setItem(fila_idx, 4, rol_item)
+            self.vista.tabla_usuarios.setItem(fila_idx, 5, est_item)
+            self.vista.tabla_usuarios.setItem(fila_idx, 6, f_item)
 
-        self.vista.tabla_usuarios.resizeColumnsToContents()
+        self.vista.tabla_usuarios.setColumnWidth(0, 42)
+
+    def _toggle_sel_todo_usuarios(self, marcado: bool):
+        """Marca o desmarca todos los checkboxes de la tabla de personal."""
+        tabla = self.vista.tabla_usuarios
+        for fila in range(tabla.rowCount()):
+            widget = tabla.cellWidget(fila, 0)
+            if widget:
+                chk = widget.findChild(QCheckBox)
+                if chk:
+                    chk.setChecked(marcado)
+        self.vista.btn_sel_todo_usuarios.setText("⬜  Deseleccionar Todo" if marcado else "☑️  Seleccionar Todo")
+
+    def _obtener_filas_usuarios_marcadas(self):
+        """Devuelve la lista de índices de fila marcadas con checkbox."""
+        filas = []
+        tabla = self.vista.tabla_usuarios
+        for r in range(tabla.rowCount()):
+            widget = tabla.cellWidget(r, 0)
+            if widget:
+                chk = widget.findChild(QCheckBox)
+                if chk and chk.isChecked():
+                    filas.append(r)
+        return filas
 
     def iniciar_edicion_usuario(self):
-        """Carga los datos del usuario seleccionado en el formulario para editarlo."""
-        fila = self.vista.tabla_usuarios.currentRow()
+        """Carga los datos del usuario marcado con checkbox (o fila actual) en el formulario."""
+        marcadas = self._obtener_filas_usuarios_marcadas()
+        if len(marcadas) >= 1:
+            fila = marcadas[0]
+        else:
+            fila = self.vista.tabla_usuarios.currentRow()
+
         if fila < 0 or fila >= len(self.usuarios_cache):
-            QMessageBox.warning(self.vista, "Sin Selección", "⚠️ Selecciona un usuario de la tabla para editar.")
+            QMessageBox.warning(self.vista, "Sin Selección", "⚠️ Marca la casilla del usuario que deseas editar.")
             return
+
         user = self.usuarios_cache[fila]
         self.id_usuario_editando = user["id_usuario"]
 
@@ -633,7 +669,7 @@ class ControladorRiego:
         self.vista.combo_user_rol.setCurrentText(user.get("rol", "OPERADOR"))
         self.vista.btn_guardar_usuario.setText("💾  Guardar Cambios")
         self.vista.btn_cancelar_edicion.setVisible(True)
-        self.vista.lbl_estado_usuarios.setText(f"ℹ️ Editando a '{user.get('nombre')}'. Puedes cambiar nombre, correo, rol o asignar nueva contraseña (opcional).")
+        self.vista.lbl_estado_usuarios.setText(f"ℹ️ Editando a '{user.get('nombre')}'. Modifica los datos y presiona Guardar Cambios.")
         self.vista.lbl_estado_usuarios.setStyleSheet("color: #38BDF8; font-weight: bold;")
 
     def cancelar_edicion_usuario(self):
@@ -704,26 +740,33 @@ class ControladorRiego:
             self.vista.lbl_estado_usuarios.setStyleSheet("color: #EF4444; font-weight: bold;")
 
     def eliminar_usuario_seleccionado(self):
-        """Elimina el usuario seleccionado en la tabla."""
-        fila = self.vista.tabla_usuarios.currentRow()
-        if fila < 0 or fila >= len(self.usuarios_cache):
-            QMessageBox.warning(self.vista, "Sin Selección", "⚠️ Selecciona un usuario de la tabla primero.")
+        """Elimina los usuarios que tengan su casilla de verificación marcada."""
+        marcadas = self._obtener_filas_usuarios_marcadas()
+        if not marcadas:
+            fila_act = self.vista.tabla_usuarios.currentRow()
+            if 0 <= fila_act < len(self.usuarios_cache):
+                marcadas = [fila_act]
+
+        if not marcadas:
+            QMessageBox.warning(self.vista, "Sin Selección", "⚠️ Marca la casilla de los miembros que deseas eliminar.")
             return
-        user = self.usuarios_cache[fila]
-        id_u = user["id_usuario"]
-        nom_u = user["nombre"]
+
+        usuarios_a_eliminar = [self.usuarios_cache[i] for i in marcadas if i < len(self.usuarios_cache)]
+        nombres = ", ".join([u["nombre"] for u in usuarios_a_eliminar])
 
         resp = QMessageBox.question(
             self.vista, "⚠️ Confirmar Eliminación",
-            f"¿Estás seguro de eliminar a '{nom_u}' (ID {id_u}) del sistema?\nEsta acción no se puede deshacer.",
+            f"¿Estás seguro de eliminar a {len(usuarios_a_eliminar)} usuario(s)?\n({nombres})\nEsta acción no se puede deshacer.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         if resp == QMessageBox.StandardButton.Yes:
-            if self.modelo.eliminar_usuario(id_u):
-                QMessageBox.information(self.vista, "Usuario Eliminado", f"✅ Usuario '{nom_u}' eliminado correctamente.")
-                self.cargar_tabla_usuarios()
-            else:
-                QMessageBox.critical(self.vista, "Error", "❌ No se pudo eliminar el usuario.")
+            eliminados = 0
+            for u in usuarios_a_eliminar:
+                if self.modelo.eliminar_usuario(u["id_usuario"]):
+                    eliminados += 1
+
+            QMessageBox.information(self.vista, "Usuarios Eliminados", f"✅ Se eliminaron {eliminados} miembro(s) del sistema correctamente.")
+            self.cargar_tabla_usuarios()
 
     def _toggle_sel_todo_historial(self, marcado: bool):
         """Marca o desmarca todos los checkboxes visibles de la tabla de historial."""
