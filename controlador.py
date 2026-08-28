@@ -955,56 +955,47 @@ class ControladorRiego:
 
             # 4. Construcción del HTML con formato nativo compatible con QTextDocument
             html = f"""
-            <table width="100%" cellpadding="10" cellspacing="0" style="background-color: #0F172A; font-family: Arial, sans-serif;">
+            <table width="100%" cellpadding="6" cellspacing="0" style="background-color: #0F172A; font-family: 'Segoe UI', Arial, sans-serif;">
                 <tr>
                     <td>
-                        <font size="5" color="#38BDF8"><b>🌱 SmartVivero IoT — Informe Técnico Oficial</b></font><br>
-                        <font size="2" color="#94A3B8">SISTEMA AUTOMATIZADO DE TELEMETRÍA ESP32 Y CONTROL DE CULTIVOS · GRUPO 3</font>
+                        <font size="4" color="#38BDF8"><b>🌱 SmartVivero IoT &mdash; Informe Técnico Oficial</b></font><br>
+                        <font size="1" color="#94A3B8">SISTEMA AUTOMATIZADO DE TELEMETRÍA ESP32 Y CONTROL DE CULTIVOS &middot; GRUPO 3</font>
                     </td>
                     <td align="right">
-                        <font size="2" color="#34D399"><b>🟢 SISTEMA EN LÍNEA</b></font>
+                        <font size="2" color="#34D399"><b>● SISTEMA EN LÍNEA</b></font>
                     </td>
                 </tr>
             </table>
-            <br>
 
-            <table width="100%" border="1" cellpadding="6" cellspacing="0" style="border-collapse: collapse; font-family: Arial, sans-serif; font-size: 11px; border-color: #CBD5E1;">
+            <table width="100%" border="1" cellpadding="4" cellspacing="0" style="border-collapse: collapse; font-family: 'Segoe UI', Arial, sans-serif; font-size: 8.5pt; border-color: #CBD5E1; margin-top: 6px;">
                 <tr style="background-color: #F1F5F9;">
-                    <td width="22%"><b>📍 Sector Auditado:</b></td>
+                    <td width="22%"><b>◆ Sector Auditado:</b></td>
                     <td width="28%">{nombre_sec} (ID: {self.sector_activo})</td>
-                    <td width="22%"><b>🌱 Tipo de Cultivo:</b></td>
+                    <td width="22%"><b>◆ Tipo de Cultivo:</b></td>
                     <td width="28%">{cultivo}</td>
                 </tr>
                 <tr>
-                    <td><b>👨‍🌾 Responsable Zona:</b></td>
+                    <td><b>◆ Responsable Zona:</b></td>
                     <td>{encargado} ({rol_enc})</td>
-                    <td><b>📧 Contacto Zona:</b></td>
+                    <td><b>◆ Contacto Zona:</b></td>
                     <td>{correo_enc}</td>
                 </tr>
                 <tr style="background-color: #F1F5F9;">
-                    <td><b>👤 Emitido / Auditado Por:</b></td>
+                    <td><b>◆ Emitido / Auditado Por:</b></td>
                     <td><b>{auditor_nombre}</b> ({auditor_rol})</td>
-                    <td><b>📅 Fecha / Hora:</b></td>
+                    <td><b>◆ Fecha / Hora:</b></td>
                     <td>{fecha_emision}</td>
                 </tr>
                 <tr>
-                    <td><b>📝 Descripción:</b></td>
+                    <td><b>◆ Descripción:</b></td>
                     <td colspan="3">{desc_sec}</td>
                 </tr>
             </table>
-            <br>
 
-            <table width="100%" cellpadding="0" cellspacing="0" style="font-family: Arial, sans-serif;">
-                <tr>
-                    <td><font size="3" color="#0F172A"><b>📊 Resumen Operativo y Umbrales de Riego</b></font></td>
-                </tr>
-                <tr>
-                    <td height="2" style="background-color: #0284C7;"></td>
-                </tr>
-            </table>
-            <br>
+            <p style="margin: 6px 0 2px 0; font-family: 'Segoe UI', Arial, sans-serif;"><font size="2" color="#0F172A"><b>■ Resumen Operativo y Umbrales de Riego</b></font></p>
+            <div style="height: 2px; background-color: #0284C7; margin-bottom: 4px;"></div>
 
-            <table width="100%" border="1" cellpadding="8" cellspacing="0" style="border-collapse: collapse; text-align: center; font-family: Arial, sans-serif; border-color: #CBD5E1;">
+            <table width="100%" border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse; text-align: center; font-family: 'Segoe UI', Arial, sans-serif; border-color: #CBD5E1;">
                 <tr style="background-color: #F8FAFC;">
                     <td width="25%">
                         <font size="1" color="#64748B"><b>HUMEDAD ACTUAL</b></font><br>
@@ -1028,31 +1019,23 @@ class ControladorRiego:
                     </td>
                 </tr>
             </table>
-            <br>
 
-            <table width="100%" cellpadding="0" cellspacing="0" style="font-family: Arial, sans-serif;">
-                <tr>
-                    <td><font size="3" color="#0F172A"><b>📋 Registro Detallado de Telemetría (Muestras Recientes: {total_muestras} totales)</b></font></td>
-                </tr>
-                <tr>
-                    <td height="2" style="background-color: #0284C7;"></td>
-                </tr>
-            </table>
-            <br>
+            <p style="margin: 6px 0 2px 0; font-family: 'Segoe UI', Arial, sans-serif;"><font size="2" color="#0F172A"><b>■ Registro Detallado de Telemetría (Muestras Recientes: {total_muestras} totales)</b></font></p>
+            <div style="height: 2px; background-color: #0284C7; margin-bottom: 4px;"></div>
 
-            <table width="100%" border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse; font-family: Arial, sans-serif; font-size: 10px; border-color: #E2E8F0; text-align: center;">
+            <table width="100%" border="1" cellpadding="4" cellspacing="0" style="border-collapse: collapse; font-family: 'Segoe UI', Arial, sans-serif; font-size: 8pt; border-color: #CBD5E1; text-align: center;">
                 <tr style="background-color: #1E293B; color: #FFFFFF;">
-                    <th width="8%">ID</th>
-                    <th width="24%">Fecha / Hora</th>
-                    <th width="24%">Ubicación / Sector</th>
-                    <th width="16%">Humedad (%)</th>
-                    <th width="14%">Valor ADC</th>
-                    <th width="14%">Sensor</th>
+                    <th width="10%" style="color: #FFFFFF;"><b>ID</b></th>
+                    <th width="26%" style="color: #FFFFFF;"><b>Fecha / Hora</b></th>
+                    <th width="22%" style="color: #FFFFFF;"><b>Ubicación / Sector</b></th>
+                    <th width="16%" style="color: #FFFFFF;"><b>Humedad (%)</b></th>
+                    <th width="13%" style="color: #FFFFFF;"><b>Valor ADC</b></th>
+                    <th width="13%" style="color: #FFFFFF;"><b>Sensor</b></th>
                 </tr>
             """
 
             if datos:
-                for i, fila in enumerate(datos[:20]):
+                for i, fila in enumerate(datos[:15]):
                     bg = "#F8FAFC" if i % 2 == 1 else "#FFFFFF"
                     id_reg = fila[0]
                     fecha_reg = fila[1]
@@ -1067,38 +1050,30 @@ class ControladorRiego:
                         <td>{ubi_reg}</td>
                         <td><font color="#0284C7"><b>{hum_reg}</b></font></td>
                         <td>{adc_reg}</td>
-                        <td><font face="Courier New">{sen_reg}</font></td>
+                        <td>{sen_reg}</td>
                     </tr>
                     """
             else:
-                html += "<tr><td colspan='6' align='center'><font color='#64748B'>No hay registros de telemetría disponibles en este sector.</font></td></tr>"
+                html += "<tr><td colspan='6' align='center' style='padding: 6px;'><font color='#64748B'>No hay registros de telemetría disponibles en este sector.</font></td></tr>"
 
             html += f"""
             </table>
-            <br>
 
-            <table width="100%" cellpadding="0" cellspacing="0" style="font-family: Arial, sans-serif;">
-                <tr>
-                    <td><font size="3" color="#0F172A"><b>🚨 Registro de Incidentes y Monitoreo de Reservorio</b></font></td>
-                </tr>
-                <tr>
-                    <td height="2" style="background-color: #0284C7;"></td>
-                </tr>
-            </table>
-            <br>
+            <p style="margin: 6px 0 2px 0; font-family: 'Segoe UI', Arial, sans-serif;"><font size="2" color="#0F172A"><b>▲ Registro de Incidentes y Monitoreo de Reservorio</b></font></p>
+            <div style="height: 2px; background-color: #0284C7; margin-bottom: 4px;"></div>
 
-            <table width="100%" border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse; font-family: Arial, sans-serif; font-size: 10px; border-color: #E2E8F0; text-align: center;">
+            <table width="100%" border="1" cellpadding="4" cellspacing="0" style="border-collapse: collapse; font-family: 'Segoe UI', Arial, sans-serif; font-size: 8pt; border-color: #CBD5E1; text-align: center;">
                 <tr style="background-color: #1E293B; color: #FFFFFF;">
-                    <th width="26%">Fecha / Hora</th>
-                    <th width="18%">Tipo</th>
-                    <th width="20%">Sensor</th>
-                    <th width="18%">Nivel Detectado</th>
-                    <th width="18%">Estado Bomba</th>
+                    <th width="26%" style="color: #FFFFFF;"><b>Fecha / Hora</b></th>
+                    <th width="18%" style="color: #FFFFFF;"><b>Tipo</b></th>
+                    <th width="20%" style="color: #FFFFFF;"><b>Sensor</b></th>
+                    <th width="18%" style="color: #FFFFFF;"><b>Nivel Detectado</b></th>
+                    <th width="18%" style="color: #FFFFFF;"><b>Estado Bomba</b></th>
                 </tr>
             """
 
             if alertas:
-                for i, al in enumerate(alertas[:8]):
+                for i, al in enumerate(alertas[:6]):
                     bg = "#F8FAFC" if i % 2 == 1 else "#FFFFFF"
                     f_al   = str(al[0]) if len(al) > 0 else ""
                     t_al   = str(al[1]) if len(al) > 1 else "CRÍTICO"
@@ -1115,34 +1090,32 @@ class ControladorRiego:
                     </tr>
                     """
             else:
-                html += "<tr><td colspan='5' align='center'><font color='#059669'><b>🟢 Reservorio óptimo. Sin alertas críticas registradas.</b></font></td></tr>"
+                html += "<tr><td colspan='5' align='center' style='padding: 6px;'><font color='#059669'><b>● Reservorio óptimo. Sin alertas críticas registradas.</b></font></td></tr>"
 
             html += f"""
             </table>
-            <br><br>
 
-            <table width="100%" cellpadding="10" cellspacing="0" style="font-family: Arial, sans-serif; font-size: 11px;">
+            <table width="100%" cellpadding="6" cellspacing="0" style="font-family: 'Segoe UI', Arial, sans-serif; font-size: 8.5pt; margin-top: 14px;">
                 <tr>
                     <td width="45%" align="center" style="border-top: 1px solid #94A3B8;">
                         <b>{auditor_nombre}</b><br>
-                        <font color="#64748B">{auditor_rol} — Auditor del Reporte</font><br>
+                        <font color="#64748B">{auditor_rol} &mdash; Auditor del Reporte</font><br>
                         <font size="1" color="#94A3B8">{auditor_correo}</font>
                     </td>
                     <td width="10%"></td>
                     <td width="45%" align="center" style="border-top: 1px solid #94A3B8;">
                         <b>{encargado}</b><br>
-                        <font color="#64748B">{rol_enc} — Responsable del Sector</font><br>
+                        <font color="#64748B">{rol_enc} &mdash; Responsable del Sector</font><br>
                         <font size="1" color="#94A3B8">{correo_enc}</font>
                     </td>
                 </tr>
             </table>
-            <br>
 
-            <table width="100%" cellpadding="6" cellspacing="0" style="border-top: 1px solid #CBD5E1; font-family: Arial, sans-serif; font-size: 9px; color: #64748B;">
+            <table width="100%" cellpadding="4" cellspacing="0" style="border-top: 1px solid #CBD5E1; font-family: 'Segoe UI', Arial, sans-serif; font-size: 7.5pt; color: #64748B; margin-top: 6px;">
                 <tr>
                     <td>
-                        <b>SmartVivero Cloud Engine</b> · Base de Datos Neon PostgreSQL · ESP32 MicroPython<br>
-                        <i>Desarrollado y certificado por <b>GRUPO 3</b> · Ingeniería de Software y Sistemas IoT</i>
+                        <b>SmartVivero Cloud Engine</b> &middot; Base de Datos Neon PostgreSQL &middot; ESP32 MicroPython<br>
+                        <i>Desarrollado y certificado por <b>GRUPO 3</b> &middot; Ingeniería de Software y Sistemas IoT</i>
                     </td>
                     <td align="right">
                         Documento Oficial de Auditoría Técnica
@@ -1156,9 +1129,10 @@ class ControladorRiego:
             doc.setHtml(html)
 
             writer = QPdfWriter(ruta_archivo)
+            writer.setResolution(300)
             writer.setPageSize(QPageSize(QPageSize.PageSizeId.A4))
             writer.setPageOrientation(QPageLayout.Orientation.Portrait)
-            writer.setPageMargins(QMarginsF(15, 15, 15, 15), QPageLayout.Unit.Millimeter)
+            writer.setPageMargins(QMarginsF(10, 10, 10, 10), QPageLayout.Unit.Millimeter)
             
             doc.print(writer)
             QMessageBox.information(
