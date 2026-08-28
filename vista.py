@@ -13,8 +13,9 @@ from PyQt6.QtCore import Qt, QPropertyAnimation, QEasingCurve
 # =============================================================================
 
 CSS_OSCURO = """
-    QMainWindow { background-color: #0B1120; }
-    QWidget { background-color: transparent; }
+    QMainWindow, QStackedWidget, QWidget#central_widget, QWidget#page_dash, QWidget#page_graficas, QWidget#page_parametros {
+        background-color: #0B1120;
+    }
     QLabel { background: transparent; color: #E2EAF4; font-family: 'Segoe UI', Arial; font-size: 13px; border: none; }
 
     QFrame#sidebar {
@@ -142,8 +143,9 @@ CSS_OSCURO = """
 """
 
 CSS_CLARO = """
-    QMainWindow { background-color: #F0F4F8; }
-    QWidget { background-color: transparent; }
+    QMainWindow, QStackedWidget, QWidget#central_widget, QWidget#page_dash, QWidget#page_graficas, QWidget#page_parametros {
+        background-color: #F0F4F8;
+    }
     QLabel { background: transparent; color: #1E2D3D; font-family: 'Segoe UI', Arial; font-size: 13px; border: none; }
 
     QFrame#sidebar {
@@ -269,25 +271,28 @@ CSS_CLARO = """
     QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }
 """
 
-# Estilos para widgets individuales según tema
 _WIDGET_ESTILOS = {
     "oscuro": {
-        "titulo":      "font-size: 21px; font-weight: 800; color: #E2EAF4; margin-bottom: 4px;",
-        "subtitulo":   "color: #56A0C0; font-size: 13px;",
-        "lbl_card":    "color: #7A90A8; font-weight: 600; font-size: 12px; letter-spacing: 0.5px;",
+        "titulo":      "font-size: 21px; font-weight: 800; color: #E2EAF4; margin-bottom: 4px; background: transparent;",
+        "subtitulo":   "color: #56A0C0; font-size: 13px; background: transparent;",
+        "lbl_card":    "color: #7A90A8; font-weight: 600; font-size: 12px; letter-spacing: 0.5px; background: transparent;",
         "lbl_admin":   "color: #4A6280; font-size: 11px; font-weight: 600; padding: 8px;"
                        " background: #0B1120; border-radius: 8px;",
         "separador":   "background: #1E3048; max-height: 1px; margin: 6px 0;",
-        "logo":        "font-size: 17px; font-weight: 900; color: #10B981; margin-left: 2px;",
+        "logo":        "font-size: 17px; font-weight: 900; color: #10B981; margin-left: 2px; background: transparent;",
+        "lbl_sector":  "color: #7A90A8; font-weight: 700; background: transparent;",
+        "lbl_hint":    "color: #4A6280; font-size: 11px; background: transparent;",
     },
     "claro": {
-        "titulo":      "font-size: 21px; font-weight: 800; color: #1E2D3D; margin-bottom: 4px;",
-        "subtitulo":   "color: #0369A1; font-size: 13px;",
-        "lbl_card":    "color: #64748B; font-weight: 600; font-size: 12px; letter-spacing: 0.5px;",
+        "titulo":      "font-size: 21px; font-weight: 800; color: #1E2D3D; margin-bottom: 4px; background: transparent;",
+        "subtitulo":   "color: #0369A1; font-size: 13px; background: transparent;",
+        "lbl_card":    "color: #64748B; font-weight: 600; font-size: 12px; letter-spacing: 0.5px; background: transparent;",
         "lbl_admin":   "color: #64748B; font-size: 11px; font-weight: 600; padding: 8px;"
                        " background: #EBF4FF; border-radius: 8px;",
         "separador":   "background: #DDE6EF; max-height: 1px; margin: 6px 0;",
-        "logo":        "font-size: 17px; font-weight: 900; color: #10B981; margin-left: 2px;",
+        "logo":        "font-size: 17px; font-weight: 900; color: #10B981; margin-left: 2px; background: transparent;",
+        "lbl_sector":  "color: #1E2D3D; font-weight: 700; background: transparent;",
+        "lbl_hint":    "color: #64748B; font-size: 11px; background: transparent;",
     }
 }
 
@@ -373,6 +378,7 @@ class VistaRiego(QMainWindow):
         self.setStyleSheet(CSS_OSCURO)
 
         widget_central = QWidget()
+        widget_central.setObjectName("central_widget")
         self.layout_maestro = QHBoxLayout()
         self.layout_maestro.setContentsMargins(0, 0, 0, 0)
         self.layout_maestro.setSpacing(0)
@@ -382,6 +388,7 @@ class VistaRiego(QMainWindow):
         self._crear_sidebar()
 
         self.paginador = QStackedWidget()
+        self.paginador.setObjectName("paginador")
         self.layout_maestro.addWidget(self.paginador)
 
         self._crear_pantalla_dashboard()
@@ -478,6 +485,7 @@ class VistaRiego(QMainWindow):
 
     def _crear_pantalla_dashboard(self):
         page_dash = QWidget()
+        page_dash.setObjectName("page_dash")
         layout_principal = QVBoxLayout(page_dash)
         layout_principal.setContentsMargins(28, 28, 28, 28)
         layout_principal.setSpacing(18)
@@ -609,6 +617,7 @@ class VistaRiego(QMainWindow):
 
     def _crear_pantalla_graficas(self):
         self.page_graficas = QWidget()
+        self.page_graficas.setObjectName("page_graficas")
         layout = QVBoxLayout(self.page_graficas)
         layout.setContentsMargins(28, 28, 28, 28)
         layout.setSpacing(16)
@@ -633,6 +642,7 @@ class VistaRiego(QMainWindow):
 
     def _crear_pantalla_parametros(self):
         self.page_parametros = QWidget()
+        self.page_parametros.setObjectName("page_parametros")
         layout = QVBoxLayout(self.page_parametros)
         layout.setContentsMargins(28, 28, 28, 28)
         layout.setSpacing(14)
@@ -654,7 +664,7 @@ class VistaRiego(QMainWindow):
 
         # Sector
         lbl_sector = QLabel("Sector (ID):")
-        lbl_sector.setStyleSheet("color: #7A90A8; font-weight: 700;")
+        self._reg(lbl_sector, *self._e("lbl_sector"))
         self.spin_sector = QSpinBox()
         self.spin_sector.setRange(1, 10)
         self.spin_sector.setValue(1)
@@ -671,14 +681,14 @@ class VistaRiego(QMainWindow):
 
         # Humedad mín
         lbl_min = QLabel("Humedad Mín. ON (%):")
-        lbl_min.setStyleSheet("color: #F59E0B; font-weight: 700;")
+        lbl_min.setStyleSheet("color: #F59E0B; font-weight: 700; background: transparent;")
         self.input_hum_min = QSpinBox()
         self.input_hum_min.setRange(0, 100)
         self.input_hum_min.setValue(30)
         self.input_hum_min.setFixedWidth(120)
         self.input_hum_min.setSuffix(" %")
         lbl_hint_min = QLabel("  ← Por debajo de este valor, el riego se ENCIENDE")
-        lbl_hint_min.setStyleSheet("color: #4A6280; font-size: 11px;")
+        self._reg(lbl_hint_min, *self._e("lbl_hint"))
         row_min = QHBoxLayout()
         row_min.addWidget(self.input_hum_min)
         row_min.addWidget(lbl_hint_min)
@@ -687,14 +697,14 @@ class VistaRiego(QMainWindow):
 
         # Humedad máx
         lbl_max = QLabel("Humedad Máx. OFF (%):")
-        lbl_max.setStyleSheet("color: #10B981; font-weight: 700;")
+        lbl_max.setStyleSheet("color: #10B981; font-weight: 700; background: transparent;")
         self.input_hum_max = QSpinBox()
         self.input_hum_max.setRange(0, 100)
         self.input_hum_max.setValue(70)
         self.input_hum_max.setFixedWidth(120)
         self.input_hum_max.setSuffix(" %")
         lbl_hint_max = QLabel("  ← Por encima de este valor, el riego se APAGA")
-        lbl_hint_max.setStyleSheet("color: #4A6280; font-size: 11px;")
+        self._reg(lbl_hint_max, *self._e("lbl_hint"))
         row_max = QHBoxLayout()
         row_max.addWidget(self.input_hum_max)
         row_max.addWidget(lbl_hint_max)
@@ -703,14 +713,14 @@ class VistaRiego(QMainWindow):
 
         # Tiempo máx
         lbl_tiempo = QLabel("Tiempo Máx. Riego (seg):")
-        lbl_tiempo.setStyleSheet("color: #38BDF8; font-weight: 700;")
+        lbl_tiempo.setStyleSheet("color: #38BDF8; font-weight: 700; background: transparent;")
         self.input_tiempo_max = QSpinBox()
         self.input_tiempo_max.setRange(10, 3600)
         self.input_tiempo_max.setValue(180)
         self.input_tiempo_max.setFixedWidth(120)
         self.input_tiempo_max.setSuffix(" seg")
         lbl_hint_tiempo = QLabel("  ← Tiempo máximo continuo antes de forzar apagado")
-        lbl_hint_tiempo.setStyleSheet("color: #4A6280; font-size: 11px;")
+        self._reg(lbl_hint_tiempo, *self._e("lbl_hint"))
         row_tiempo = QHBoxLayout()
         row_tiempo.addWidget(self.input_tiempo_max)
         row_tiempo.addWidget(lbl_hint_tiempo)
