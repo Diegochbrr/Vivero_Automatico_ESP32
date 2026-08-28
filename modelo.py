@@ -311,6 +311,22 @@ class ModeloRiego:
             print(f"Error creando usuario: {e}")
             return False
 
+    def actualizar_usuario(self, id_usuario: int, nombre: str = None, correo: str = None, contrasena: str = None, rol: str = None, activo: bool = True) -> bool:
+        """Actualiza un usuario existente (contraseña y correo opcionales)."""
+        try:
+            payload = {}
+            if nombre is not None: payload["nombre"] = nombre
+            if correo is not None: payload["correo"] = correo
+            if contrasena is not None and contrasena.strip(): payload["contrasena"] = contrasena.strip()
+            if rol is not None: payload["rol"] = rol
+            payload["activo"] = activo
+
+            res = requests.put(f"{self.api_url}/usuarios/{id_usuario}", json=payload, headers={"X-API-Key": self.api_key}, timeout=5)
+            return res.status_code == 200
+        except Exception as e:
+            print(f"Error actualizando usuario {id_usuario}: {e}")
+            return False
+
     def eliminar_usuario(self, id_usuario: int) -> bool:
         """Elimina un usuario por su ID."""
         try:

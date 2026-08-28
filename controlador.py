@@ -80,9 +80,13 @@ class ControladorRiego:
         self.vista.btn_cargar_umbral.clicked.connect(self.cargar_umbral)
 
         # Botones de Gestión de Usuarios
+        self.id_usuario_editando = None
         self.vista.btn_guardar_usuario.clicked.connect(self.guardar_nuevo_usuario)
+        self.vista.btn_cancelar_edicion.clicked.connect(self.cancelar_edicion_usuario)
+        self.vista.btn_editar_usuario.clicked.connect(self.iniciar_edicion_usuario)
         self.vista.btn_eliminar_usuario.clicked.connect(self.eliminar_usuario_seleccionado)
         self.vista.btn_refrescar_usuarios.clicked.connect(self.cargar_tabla_usuarios)
+        self.vista.tabla_usuarios.cellDoubleClicked.connect(lambda row, col: self.iniciar_edicion_usuario())
 
         # Iniciar Carga de Sectores y Usuarios
         self.cargar_sectores_iniciales()
@@ -557,13 +561,16 @@ class ControladorRiego:
 
         # 4. Gestión de Personal (Solo Administrador)
         self.vista.btn_guardar_usuario.setEnabled(es_admin)
+        self.vista.btn_editar_usuario.setEnabled(es_admin)
         self.vista.btn_eliminar_usuario.setEnabled(es_admin)
         self.vista.txt_user_nombre.setEnabled(es_admin)
         self.vista.txt_user_correo.setEnabled(es_admin)
         self.vista.txt_user_pass.setEnabled(es_admin)
         self.vista.combo_user_rol.setEnabled(es_admin)
+        tooltip_edit = "Editar el usuario seleccionado de la tabla" if es_admin else "🔒 Bloqueado: Solo Administradores pueden editar miembros."
+        self.vista.btn_editar_usuario.setToolTip(tooltip_edit)
         if not es_admin:
-            self.vista.lbl_estado_usuarios.setText(f"🔒 Rol {rol}: Solo consulta. Solo Administradores pueden registrar o eliminar miembros.")
+            self.vista.lbl_estado_usuarios.setText(f"🔒 Rol {rol}: Solo consulta. Solo Administradores pueden registrar, editar o eliminar miembros.")
             self.vista.lbl_estado_usuarios.setStyleSheet("color: #F59E0B; font-size: 12px; font-weight: bold;")
         else:
             self.vista.lbl_estado_usuarios.setText("")
@@ -606,15 +613,79 @@ class ControladorRiego:
 
         self.vista.tabla_usuarios.resizeColumnsToContents()
 
+    def iniciar_edicion_usuario(self):
+        """Carga los datos del usuario seleccionado en el formulario para editarlo."""
+        fila = self.vista.tabla_usuarios.currentRow()
+        if fila < 0 or fila >= len(self.usuarios_cache):
+            QMessageBox.warning(self.vista, "Sin Selección", "⚠️ Selecciona un usuario de la tabla para editar.")
+            return
+        user = self.usuarios_cache[fila]
+        self.id_usuario_editando = user["id_usuario"]
+
+        # Rellenar campos del formulario
+        self.vista.lbl_form_usuario_titulo.setText(f"✏️  Editar Miembro del Equipo (ID: #{self.id_usuario_editando})")
+        self.vista.lbl_form_usuario_titulo.setStyleSheet("font-weight: 700; font-size: 13px; color: #F59E0B;")
+        self.vista.txt_user_nombre.setText(user.get("nombre", ""))
+        self.vista.txt_user_correo.setText(user.get("correo", ""))
+        self.vista.txt_user_correo.setPlaceholderText("Correo (Opcional - dejar igual)")
+        self.vista.txt_user_pass.clear()
+        self.vista.txt_user_pass.setPlaceholderText("Contraseña (Opcional - dejar vacía para conservar)")
+        self.vista.combo_user_rol.setCurrentText(user.get("rol", "OPERADOR"))
+        self.vista.btn_guardar_usuario.setText("💾  Guardar Cambios")
+        self.vista.btn_cancelar_edicion.setVisible(True)
+        self.vista.lbl_estado_usuarios.setText(f"ℹ️ Editando a '{user.get('nombre')}'. Puedes cambiar nombre, correo, rol o asignar nueva contraseña (opcional).")
+        self.vista.lbl_estado_usuarios.setStyleSheet("color: #38BDF8; font-weight: bold;")
+
+    def cancelar_edicion_usuario(self):
+        """Restaura el formulario al modo de registro de nuevo usuario."""
+        self.id_usuario_editando = None
+        self.vista.lbl_form_usuario_titulo.setText("➕  Registrar Nuevo Miembro del Equipo")
+        self.vista.lbl_form_usuario_titulo.setStyleSheet("font-weight: 700; font-size: 13px; color: #38BDF8;")
+        self.vista.txt_user_nombre.clear()
+        self.vista.txt_user_nombre.setPlaceholderText("Nombre completo (ej. Diego Charry)")
+        self.vista.txt_user_correo.clear()
+        self.vista.txt_user_correo.setPlaceholderText("Correo electrónico")
+        self.vista.txt_user_pass.clear()
+        self.vista.txt_user_pass.setPlaceholderText("Contraseña")
+        self.vista.btn_guardar_usuario.setText("💾  Registrar")
+        self.vista.btn_cancelar_edicion.setVisible(False)
+        self.vista.lbl_estado_usuarios.setText("")
+
     def guardar_nuevo_usuario(self):
-        """Registra un nuevo usuario a través de la API."""
+        """Registra un nuevo usuario o actualiza el usuario si está en modo edición."""
         nom = self.vista.txt_user_nombre.text().strip()
         cor = self.vista.txt_user_correo.text().strip()
         pas = self.vista.txt_user_pass.text().strip()
         rol = self.vista.combo_user_rol.currentText()
 
+        # MODO EDICIÓN
+        if self.id_usuario_editando is not None:
+            if not nom:
+                QMessageBox.warning(self.vista, "Campo Requerido", "⚠️ El nombre del usuario no puede estar vacío.")
+                return
+
+            self.vista.lbl_estado_usuarios.setText("⏳ Actualizando usuario...")
+            self.vista.lbl_estado_usuarios.setStyleSheet("color: #38BDF8; font-weight: bold;")
+
+            exito = self.modelo.actualizar_usuario(
+                id_usuario=self.id_usuario_editando,
+                nombre=nom,
+                correo=cor if cor else None,
+                contrasena=pas if pas else None,
+                rol=rol
+            )
+            if exito:
+                QMessageBox.information(self.vista, "Usuario Actualizado", f"✅ Usuario '{nom}' modificado exitosamente.")
+                self.cancelar_edicion_usuario()
+                self.cargar_tabla_usuarios()
+            else:
+                self.vista.lbl_estado_usuarios.setText("❌ Error al actualizar el usuario. Verifica la conexión.")
+                self.vista.lbl_estado_usuarios.setStyleSheet("color: #EF4444; font-weight: bold;")
+            return
+
+        # MODO REGISTRO NUEVO
         if not nom or not cor or not pas:
-            QMessageBox.warning(self.vista, "Campos Incompletos", "⚠️ Por favor completa el nombre, correo y contraseña.")
+            QMessageBox.warning(self.vista, "Campos Incompletos", "⚠️ Para registrar un nuevo miembro, completa el nombre, correo y contraseña.")
             return
 
         self.vista.lbl_estado_usuarios.setText("⏳ Guardando usuario...")

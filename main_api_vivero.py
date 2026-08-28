@@ -91,10 +91,11 @@ class UsuarioCreate(BaseModel):
     rol: str = Field(default="OPERADOR", example="ADMINISTRADOR")
 
 class UsuarioUpdate(BaseModel):
-    nombre: str
-    correo: str
-    rol: str
-    activo: bool = True
+    nombre: Optional[str] = Field(default=None, example="Diego Charry")
+    correo: Optional[str] = Field(default=None, example="diego.charry@vivero.com")
+    contrasena: Optional[str] = Field(default=None, example="nueva_contrasena123")
+    rol: Optional[str] = Field(default=None, example="ADMINISTRADOR")
+    activo: Optional[bool] = Field(default=None, example=True)
 
 class UsuarioResponse(BaseModel):
     id_usuario: int
@@ -472,15 +473,26 @@ class ViveroRepository:
     def update_usuario(self, id_usuario: int, user: UsuarioUpdate) -> Dict[str, Any]:
         with self.db_manager.get_connection() as conn:
             with conn.cursor() as cur:
+                # 1. Obtener usuario existente
+                cur.execute("SELECT * FROM usuarios WHERE id_usuario = %s;", (id_usuario,))
+                current = cur.fetchone()
+                if not current:
+                    raise HTTPException(status_code=404, detail="Usuario no encontrado.")
+
+                # 2. Reemplazar solo los campos provistos (contraseña y correo opcionales)
+                nuevo_nombre = user.nombre.strip() if (user.nombre and user.nombre.strip()) else current["nombre"]
+                nuevo_correo = user.correo.strip() if (user.correo and user.correo.strip()) else current["correo"]
+                nueva_pass   = user.contrasena.strip() if (user.contrasena and user.contrasena.strip()) else current["contrasena_hash"]
+                nuevo_rol    = user.rol.strip().upper() if (user.rol and user.rol.strip()) else current["rol"]
+                nuevo_activo = user.activo if user.activo is not None else current["activo"]
+
                 cur.execute("""
                     UPDATE usuarios
-                    SET nombre = %s, correo = %s, rol = %s, activo = %s
+                    SET nombre = %s, correo = %s, contrasena_hash = %s, rol = %s, activo = %s
                     WHERE id_usuario = %s
                     RETURNING id_usuario, nombre, correo, rol, activo, creado_en;
-                """, (user.nombre, user.correo, user.rol.upper(), user.activo, id_usuario))
+                """, (nuevo_nombre, nuevo_correo, nueva_pass, nuevo_rol, nuevo_activo, id_usuario))
                 res = cur.fetchone()
-                if not res:
-                    raise HTTPException(status_code=404, detail="Usuario no encontrado.")
                 conn.commit()
                 return dict(res)
 

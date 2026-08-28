@@ -1002,9 +1002,9 @@ class VistaRiego(QMainWindow):
         f_layout.setContentsMargins(20, 18, 20, 18)
         f_layout.setSpacing(12)
 
-        lbl_f_title = QLabel("➕  Registrar Nuevo Miembro del Equipo")
-        lbl_f_title.setStyleSheet("font-weight: 700; font-size: 13px; color: #38BDF8;")
-        f_layout.addWidget(lbl_f_title)
+        self.lbl_form_usuario_titulo = QLabel("➕  Registrar Nuevo Miembro del Equipo")
+        self.lbl_form_usuario_titulo.setStyleSheet("font-weight: 700; font-size: 13px; color: #38BDF8;")
+        f_layout.addWidget(self.lbl_form_usuario_titulo)
 
         h_inputs = QHBoxLayout()
         h_inputs.setSpacing(12)
@@ -1016,23 +1016,30 @@ class VistaRiego(QMainWindow):
         self.txt_user_correo.setPlaceholderText("Correo electrónico")
 
         self.txt_user_pass = QLineEdit()
-        self.txt_user_pass.setPlaceholderText("Contraseña")
+        self.txt_user_pass.setPlaceholderText("Contraseña (Opcional al editar)")
         self.txt_user_pass.setEchoMode(QLineEdit.EchoMode.Password)
 
         self.combo_user_rol = QComboBox()
-        self.combo_user_rol.addItems(["ADMINISTRADOR", "OPERADOR", "AGRONOMO", "VISUALIZADOR"])
+        self.combo_user_rol.addItems(["ADMINISTRADOR", "OPERADOR", "AGRONOMO", "VISUALIZADOR", "TECNICO_IOT"])
         self.combo_user_rol.setFixedWidth(160)
 
         self.btn_guardar_usuario = QPushButton("💾  Registrar")
         self.btn_guardar_usuario.setProperty("class", "btn_accion")
         self.btn_guardar_usuario.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_guardar_usuario.setFixedWidth(130)
+        self.btn_guardar_usuario.setFixedWidth(140)
+
+        self.btn_cancelar_edicion = QPushButton("❌ Cancelar")
+        self.btn_cancelar_edicion.setProperty("class", "btn_toggle")
+        self.btn_cancelar_edicion.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_cancelar_edicion.setFixedWidth(100)
+        self.btn_cancelar_edicion.setVisible(False)
 
         h_inputs.addWidget(self.txt_user_nombre, 2)
         h_inputs.addWidget(self.txt_user_correo, 2)
-        h_inputs.addWidget(self.txt_user_pass, 1)
+        h_inputs.addWidget(self.txt_user_pass, 2)
         h_inputs.addWidget(self.combo_user_rol, 1)
         h_inputs.addWidget(self.btn_guardar_usuario)
+        h_inputs.addWidget(self.btn_cancelar_edicion)
         f_layout.addLayout(h_inputs)
 
         self.lbl_estado_usuarios = QLabel("")
@@ -1063,18 +1070,24 @@ class VistaRiego(QMainWindow):
         self.tabla_usuarios.setShowGrid(True)
         v_tab.addWidget(self.tabla_usuarios)
 
-        # Botón Eliminar Usuario y refrescar
+        # Botones de Acción sobre la Tabla
         h_btn_tab = QHBoxLayout()
+        self.btn_editar_usuario = QPushButton("✏️  Editar Seleccionado")
+        self.btn_editar_usuario.setProperty("class", "btn_accion")
+        self.btn_editar_usuario.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_editar_usuario.setFixedWidth(180)
+
         self.btn_eliminar_usuario = QPushButton("🗑️  Eliminar Seleccionado")
         self.btn_eliminar_usuario.setProperty("class", "btn_peligro")
         self.btn_eliminar_usuario.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_eliminar_usuario.setFixedWidth(200)
+        self.btn_eliminar_usuario.setFixedWidth(180)
 
         self.btn_refrescar_usuarios = QPushButton("🔄  Refrescar Lista")
         self.btn_refrescar_usuarios.setProperty("class", "btn_toggle")
         self.btn_refrescar_usuarios.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_refrescar_usuarios.setFixedWidth(160)
+        self.btn_refrescar_usuarios.setFixedWidth(150)
 
+        h_btn_tab.addWidget(self.btn_editar_usuario)
         h_btn_tab.addWidget(self.btn_eliminar_usuario)
         h_btn_tab.addWidget(self.btn_refrescar_usuarios)
         h_btn_tab.addStretch()
