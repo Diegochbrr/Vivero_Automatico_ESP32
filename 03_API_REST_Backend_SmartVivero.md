@@ -94,7 +94,7 @@ Gestiona el personal del sistema, credenciales y vinculación foránea con roles
 | `id_usuario` | `SERIAL` | PK | Identificador único de usuario. |
 | `nombre` | `VARCHAR(100)` | NOT NULL | Nombre completo. |
 | `correo` | `VARCHAR(150)` | UNIQUE, NOT NULL | Correo electrónico de acceso. |
-| `contrasena_hash` | `VARCHAR(255)` | NOT NULL | Contraseña cifrada o hash de autenticación. |
+| `contrasena_hash` | `VARCHAR(255)` | NOT NULL | Contraseña cifrada con hash criptográfico seguro (SHA-256 de 64 caracteres). |
 | `rol` | `VARCHAR(50)` | DEFAULT 'OPERADOR' | Nombre descriptivo del rol (retrocompatibilidad). |
 | `id_rol` | `INTEGER` | FK (`roles.id_rol`) | Clave foránea al catálogo de roles (Normalización 3NF). |
 | `activo` | `BOOLEAN` | DEFAULT TRUE | Estado operativo de la cuenta. |

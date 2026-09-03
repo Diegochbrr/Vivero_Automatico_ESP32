@@ -6,6 +6,7 @@ Incluye generador de telemetría IoT en segundo plano para operar sin depender d
 
 import os
 import sys
+import hashlib
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from contextlib import contextmanager
@@ -23,6 +24,10 @@ if sys.stdout and hasattr(sys.stdout, "reconfigure") and sys.stdout.encoding != 
         sys.stdout.reconfigure(encoding="utf-8")
     except Exception:
         pass
+
+def hash_contrasena(contrasena: str) -> str:
+    """Genera el hash criptográfico SHA-256 de una contraseña en texto plano."""
+    return hashlib.sha256(contrasena.encode("utf-8")).hexdigest()
 
 # Cargar variables del entorno desde el archivo .env
 load_dotenv()
@@ -247,17 +252,20 @@ class ViveroRepository:
                         );
                     """)
 
-                    # 4. Semilla/Sincronización de los 5 Usuarios del Grupo 3
+                    # 4. Semilla/Sincronización de los 5 Usuarios del Grupo 3 con Hash SHA-256
+                    pass_semilla_hash = hash_contrasena('admin123')
                     usuarios_iniciales = [
-                        ('Diego Charry', 'diego.charry@vivero.com', 'admin123', 'ADMINISTRADOR', 1),
-                        ('Angel Villalobos', 'angel.villalobos@vivero.com', 'admin123', 'AGRONOMO', 2),
-                        ('Adelfo Freyle', 'adelfo.freyle@vivero.com', 'admin123', 'OPERADOR', 3),
-                        ('Juan Quintero', 'juan.quintero@vivero.com', 'admin123', 'TECNICO_IOT', 4),
-                        ('Juan Figueroa', 'juan.figueroa@vivero.com', 'admin123', 'VISUALIZADOR', 5),
+                        ('Diego Charry', 'diego.charry@vivero.com', pass_semilla_hash, 'ADMINISTRADOR', 1),
+                        ('Angel Villalobos', 'angel.villalobos@vivero.com', pass_semilla_hash, 'AGRONOMO', 2),
+                        ('Adelfo Freyle', 'adelfo.freyle@vivero.com', pass_semilla_hash, 'OPERADOR', 3),
+                        ('Juan Quintero', 'juan.quintero@vivero.com', pass_semilla_hash, 'TECNICO_IOT', 4),
+                        ('Juan Figueroa', 'juan.figueroa@vivero.com', pass_semilla_hash, 'VISUALIZADOR', 5),
                     ]
                     for nom, cor, pas, rol, id_r in usuarios_iniciales:
-                        cur.execute("SELECT id_usuario FROM usuarios WHERE correo = %s;", (cor,))
-                        if cur.fetchone():
+                        cur.execute("SELECT id_usuario, contrasena_hash FROM usuarios WHERE correo = %s;", (cor,))
+                        row_u = cur.fetchone()
+                        if row_u:
+                            # Si la contraseña existente no tiene 64 caracteres (no es SHA-256), actualizarla al hash
                             cur.execute("""
                                 UPDATE usuarios SET nombre = %s, contrasena_hash = %s, rol = %s, id_rol = %s, activo = TRUE
                                 WHERE correo = %s;
@@ -267,6 +275,13 @@ class ViveroRepository:
                                 INSERT INTO usuarios (nombre, correo, contrasena_hash, rol, id_rol, activo)
                                 VALUES (%s, %s, %s, %s, %s, TRUE);
                             """, (nom, cor, pas, rol, id_r))
+
+                    # Migración automática: cifrar cualquier contraseña legacy en texto plano restante
+                    cur.execute("SELECT id_usuario, contrasena_hash FROM usuarios;")
+                    for u_row in cur.fetchall():
+                        c_val = u_row["contrasena_hash"]
+                        if len(c_val) != 64:
+                            cur.execute("UPDATE usuarios SET contrasena_hash = %s WHERE id_usuario = %s;", (hash_contrasena(c_val), u_row["id_usuario"]))
 
                     # 4. Semilla/Sincronización de Sectores asignados al equipo
                     sectores_iniciales = [
@@ -539,11 +554,14 @@ class ViveroRepository:
                     else:
                         id_rol = 3  # OPERADOR por defecto
 
+                # Cifrar contraseña con hash criptográfico SHA-256
+                pass_hash = hash_contrasena(user.contrasena.strip())
+
                 cur.execute("""
                     INSERT INTO usuarios (nombre, correo, contrasena_hash, rol, id_rol, activo)
                     VALUES (%s, %s, %s, %s, %s, TRUE)
                     RETURNING id_usuario, nombre, correo, rol, id_rol, activo, creado_en;
-                """, (user.nombre, user.correo, user.contrasena, nombre_rol, id_rol))
+                """, (user.nombre, user.correo, pass_hash, nombre_rol, id_rol))
                 res = cur.fetchone()
                 conn.commit()
                 return dict(res)
@@ -557,10 +575,10 @@ class ViveroRepository:
                 if not current:
                     raise HTTPException(status_code=404, detail="Usuario no encontrado.")
 
-                # 2. Reemplazar solo los campos provistos (contraseña y correo opcionales)
+                # 2. Reemplazar solo los campos provistos (hashear contraseña si se envía nueva)
                 nuevo_nombre = user.nombre.strip() if (user.nombre and user.nombre.strip()) else current["nombre"]
                 nuevo_correo = user.correo.strip() if (user.correo and user.correo.strip()) else current["correo"]
-                nueva_pass   = user.contrasena.strip() if (user.contrasena and user.contrasena.strip()) else current["contrasena_hash"]
+                nueva_pass   = hash_contrasena(user.contrasena.strip()) if (user.contrasena and user.contrasena.strip()) else current["contrasena_hash"]
                 nuevo_activo = user.activo if user.activo is not None else current["activo"]
 
                 # Resolver id_rol y nombre_rol
@@ -608,7 +626,12 @@ class ViveroRepository:
                     WHERE u.correo = %s;
                 """, (correo,))
                 user = cur.fetchone()
-                if not user or user["contrasena_hash"] != contrasena:
+                if not user:
+                    raise HTTPException(status_code=401, detail="Credenciales incorrectas.")
+                
+                input_hash = hash_contrasena(contrasena.strip())
+                # Valida contra el hash SHA-256 (y tolerancia retrocompatible con texto plano)
+                if user["contrasena_hash"] != input_hash and user["contrasena_hash"] != contrasena:
                     raise HTTPException(status_code=401, detail="Credenciales incorrectas.")
                 if not user["activo"]:
                     raise HTTPException(status_code=403, detail="Cuenta de usuario desactivada.")

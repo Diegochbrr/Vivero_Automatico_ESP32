@@ -1098,7 +1098,7 @@ class DialogoCambiarCuenta(QDialog):
         lbl_titulo.setStyleSheet("font-size: 17px; font-weight: 800; color: #38BDF8;")
         layout.addWidget(lbl_titulo)
 
-        lbl_sub = QLabel("Selecciona un perfil registrado o introduce tus credenciales:")
+        lbl_sub = QLabel("Selecciona tu cuenta e ingresa la contraseña obligatoria:")
         lbl_sub.setStyleSheet("font-size: 12px; color: #7A90A8;")
         lbl_sub.setWordWrap(True)
         layout.addWidget(lbl_sub)
@@ -1130,13 +1130,12 @@ class DialogoCambiarCuenta(QDialog):
         self.txt_correo.setPlaceholderText("Correo electrónico")
 
         self.txt_pass = QLineEdit()
-        self.txt_pass.setPlaceholderText("Contraseña (opcional para cambio rápido)")
+        self.txt_pass.setPlaceholderText("Modo Invitado (No requiere contraseña)")
         self.txt_pass.setEchoMode(QLineEdit.EchoMode.Password)
+        self.txt_pass.setEnabled(False)
 
-        # Al cambiar selector, actualizar el correo
+        # Al cambiar selector, actualizar el correo y el estado de la contraseña
         self.combo_perfiles.currentIndexChanged.connect(self._al_cambiar_perfil)
-        if usuarios and len(usuarios) > 0:
-            self.txt_correo.setText(usuarios[0].get("correo", ""))
 
         layout.addWidget(self.txt_correo)
         layout.addWidget(self.txt_pass)
@@ -1149,7 +1148,7 @@ class DialogoCambiarCuenta(QDialog):
         h_btn = QHBoxLayout()
         h_btn.setSpacing(10)
 
-        self.btn_login = QPushButton("🔓  Cambiar Cuenta")
+        self.btn_login = QPushButton("👤  Entrar como Invitado")
         self.btn_login.setStyleSheet(
             "background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #0369A1, stop:1 #0EA5E9);"
             "color: white; border-radius: 8px; padding: 10px 18px; font-weight: 800; font-size: 13px; border: none;"
@@ -1169,10 +1168,18 @@ class DialogoCambiarCuenta(QDialog):
 
     def _al_cambiar_perfil(self, idx):
         data = self.combo_perfiles.currentData()
+        self.lbl_error.setText("")
         if data:
             if data.get("rol") == "INVITADO":
                 self.txt_correo.setText("")
                 self.txt_pass.clear()
+                self.txt_pass.setEnabled(False)
+                self.txt_pass.setPlaceholderText("Modo Invitado (No requiere contraseña)")
+                self.btn_login.setText("👤  Entrar como Invitado")
             else:
                 self.txt_correo.setText(data.get("correo", ""))
                 self.txt_pass.clear()
+                self.txt_pass.setEnabled(True)
+                self.txt_pass.setPlaceholderText("Contraseña (Obligatoria)")
+                self.btn_login.setText("🔐  Iniciar Sesión")
+                self.txt_pass.setFocus()

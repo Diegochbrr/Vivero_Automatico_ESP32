@@ -464,26 +464,38 @@ class ControladorRiego:
         def procesar_login():
             correo = dlg.txt_correo.text().strip()
             contrasena = dlg.txt_pass.text().strip()
+            perfil = dlg.combo_perfiles.currentData()
 
-            if contrasena:
-                user_auth = self.modelo.autenticar_usuario(correo, contrasena)
-                if user_auth:
-                    self.establecer_usuario_sesion(user_auth)
-                    dlg.accept()
-                    QMessageBox.information(self.vista, "Sesión Iniciada", f"✅ Bienvenido/a, {user_auth['nombre']}.")
-                else:
-                    dlg.lbl_error.setText("❌ Contraseña o correo incorrectos.")
+            # 1. Regresar al Modo Invitado (no requiere contraseña)
+            if perfil and perfil.get("rol") == "INVITADO" and not correo:
+                self.establecer_usuario_sesion(perfil)
+                dlg.accept()
+                QMessageBox.information(self.vista, "Modo Invitado", "👤 Has cambiado al Modo Invitado (Solo Lectura).")
+                return
+
+            # Si el usuario seleccionó un perfil registrado pero dejó el campo correo vacío, tomar el del perfil
+            if not correo and perfil and perfil.get("correo"):
+                correo = perfil.get("correo", "").strip()
+
+            # 2. La contraseña es estrictamente OBLIGATORIA para cualquier usuario registrado
+            if not contrasena:
+                dlg.lbl_error.setText("🔒 La contraseña es obligatoria para acceder a esta cuenta.")
+                dlg.txt_pass.setFocus()
+                return
+
+            # 3. Autenticación contra la API con verificación de credenciales
+            user_auth = self.modelo.autenticar_usuario(correo, contrasena)
+            if user_auth:
+                self.establecer_usuario_sesion(user_auth)
+                dlg.accept()
+                QMessageBox.information(
+                    self.vista, "Sesión Iniciada",
+                    f"✅ Bienvenido/a, {user_auth['nombre']} ({user_auth.get('rol', 'OPERADOR')})."
+                )
             else:
-                perfil = dlg.combo_perfiles.currentData()
-                if perfil:
-                    self.establecer_usuario_sesion(perfil)
-                    dlg.accept()
-                    if perfil.get("rol") == "INVITADO":
-                        QMessageBox.information(self.vista, "Modo Invitado", "👤 Has cambiado al Modo Invitado (Solo Lectura).")
-                    else:
-                        QMessageBox.information(self.vista, "Cuenta Cambiada", f"👤 Sesión cambiada a: {perfil['nombre']} ({perfil.get('rol', 'OPERADOR')}).")
-                else:
-                    dlg.lbl_error.setText("⚠️ Selecciona un perfil o ingresa tu contraseña.")
+                dlg.lbl_error.setText("❌ Contraseña o correo incorrectos.")
+                dlg.txt_pass.selectAll()
+                dlg.txt_pass.setFocus()
 
         dlg.btn_login.clicked.connect(procesar_login)
         dlg.exec()
