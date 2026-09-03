@@ -25,7 +25,7 @@ La aplicación de escritorio SmartVivero es una interfaz gráfica moderna, react
 #### 2. Vista (`vista.py` — Clase `VistaRiego`)
 - Construida con `QMainWindow` y `QStackedWidget` para navegación fluida.
 - **Secciones de la Interfaz:**
-  - **Barra Superior Permanente:** Selector de sector activo, ficha del encargado de zona, indicador de presencia (`En Línea`, `Ausente`, `En Campo`) y botón modal de sesión.
+  - **Barra Superior Permanente:** Selector de sector activo, ficha del encargado de zona y botón modal de sesión.
   - **Página 0 — Home (Dashboard):** Tarjetas de métricas en vivo con barras de progreso animadas, botón de forzado de riego manual, tabla de telemetría con casillas checkbox y buscador, y tabla de incidentes de reservorio.
   - **Página 1 — Gráficas (Matplotlib):** Visualización temporal de humedad con líneas de corte para umbrales mínimo y máximo e histograma de distribución.
   - **Página 2 — Configuración:** Ajuste de parámetros de riego por sector (`Humedad Mínima ON`, `Humedad Máxima OFF`, `Tiempo Máximo de Bomba`).

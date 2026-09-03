@@ -5,6 +5,7 @@ Incluye generador de telemetría IoT en segundo plano para operar sin depender d
 """
 
 import os
+import sys
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from contextlib import contextmanager
@@ -16,6 +17,12 @@ import psycopg2
 from psycopg2 import pool
 from psycopg2.extras import RealDictCursor
 import uvicorn
+
+if sys.stdout and hasattr(sys.stdout, "reconfigure") and sys.stdout.encoding != "utf-8":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
 
 # Cargar variables del entorno desde el archivo .env
 load_dotenv()
@@ -84,17 +91,24 @@ class SectorUpdate(BaseModel):
 
 
 # --- DTOs USUARIOS Y ROLES ---
+class RolResponse(BaseModel):
+    id_rol: int
+    nombre_rol: str
+    descripcion: Optional[str] = None
+
 class UsuarioCreate(BaseModel):
     nombre: str = Field(..., example="Diego Charry")
     correo: str = Field(..., example="diego.charry@vivero.com")
     contrasena: str = Field(..., example="admin123")
-    rol: str = Field(default="OPERADOR", example="ADMINISTRADOR")
+    rol: Optional[str] = Field(default="OPERADOR", example="ADMINISTRADOR")
+    id_rol: Optional[int] = Field(default=None, example=1)
 
 class UsuarioUpdate(BaseModel):
     nombre: Optional[str] = Field(default=None, example="Diego Charry")
     correo: Optional[str] = Field(default=None, example="diego.charry@vivero.com")
     contrasena: Optional[str] = Field(default=None, example="nueva_contrasena123")
     rol: Optional[str] = Field(default=None, example="ADMINISTRADOR")
+    id_rol: Optional[int] = Field(default=None, example=1)
     activo: Optional[bool] = Field(default=None, example=True)
 
 class UsuarioResponse(BaseModel):
@@ -102,6 +116,7 @@ class UsuarioResponse(BaseModel):
     nombre: str
     correo: str
     rol: str
+    id_rol: Optional[int] = None
     activo: bool
     creado_en: Optional[Any] = None
 
@@ -172,7 +187,29 @@ class ViveroRepository:
         try:
             with self.db_manager.get_connection() as conn:
                 with conn.cursor() as cur:
-                    # 1. Tabla Usuarios
+                    # 1. Tabla Roles (Normalización 3NF)
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS roles (
+                            id_rol SERIAL PRIMARY KEY,
+                            nombre_rol VARCHAR(50) UNIQUE NOT NULL,
+                            descripcion TEXT
+                        );
+                    """)
+                    roles_iniciales = [
+                        ('ADMINISTRADOR', 'Acceso total al sistema, configuración y gestión de personal'),
+                        ('AGRONOMO', 'Supervisión de cultivos y calibración de umbrales agronómicos'),
+                        ('OPERADOR', 'Operación de riego y supervisión en campo'),
+                        ('TECNICO_IOT', 'Mantenimiento de nodos sensores y actuadores ESP32'),
+                        ('VISUALIZADOR', 'Monitoreo en tiempo real y solo lectura'),
+                    ]
+                    for nom_r, desc_r in roles_iniciales:
+                        cur.execute("""
+                            INSERT INTO roles (nombre_rol, descripcion)
+                            VALUES (%s, %s)
+                            ON CONFLICT (nombre_rol) DO UPDATE SET descripcion = EXCLUDED.descripcion;
+                        """, (nom_r, desc_r))
+
+                    # 2. Tabla Usuarios con Llave Foránea id_rol
                     cur.execute("""
                         CREATE TABLE IF NOT EXISTS usuarios (
                             id_usuario SERIAL PRIMARY KEY,
@@ -180,12 +217,24 @@ class ViveroRepository:
                             correo VARCHAR(150) UNIQUE NOT NULL,
                             contrasena_hash VARCHAR(255) NOT NULL,
                             rol VARCHAR(50) DEFAULT 'OPERADOR',
+                            id_rol INT REFERENCES roles(id_rol),
                             activo BOOLEAN DEFAULT TRUE,
                             creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                         );
                     """)
+                    cur.execute("""
+                        DO $$
+                        BEGIN
+                            IF NOT EXISTS (
+                                SELECT 1 FROM information_schema.columns 
+                                WHERE table_schema = 'public' AND table_name = 'usuarios' AND column_name = 'id_rol'
+                            ) THEN
+                                ALTER TABLE usuarios ADD COLUMN id_rol INT REFERENCES roles(id_rol);
+                            END IF;
+                        END $$;
+                    """)
 
-                    # 2. Tabla Sectores y Encargados
+                    # 3. Tabla Sectores y Encargados
                     cur.execute("""
                         CREATE TABLE IF NOT EXISTS sectores (
                             id_sector INT PRIMARY KEY,
@@ -198,26 +247,26 @@ class ViveroRepository:
                         );
                     """)
 
-                    # 3. Semilla/Sincronización de los 5 Usuarios del Grupo 3
+                    # 4. Semilla/Sincronización de los 5 Usuarios del Grupo 3
                     usuarios_iniciales = [
-                        ('Diego Charry', 'diego.charry@vivero.com', 'admin123', 'ADMINISTRADOR'),
-                        ('Angel Villalobos', 'angel.villalobos@vivero.com', 'admin123', 'AGRONOMO'),
-                        ('Adelfo Freyle', 'adelfo.freyle@vivero.com', 'admin123', 'OPERADOR'),
-                        ('Juan Quintero', 'juan.quintero@vivero.com', 'admin123', 'TECNICO_IOT'),
-                        ('Juan Figueroa', 'juan.figueroa@vivero.com', 'admin123', 'VISUALIZADOR'),
+                        ('Diego Charry', 'diego.charry@vivero.com', 'admin123', 'ADMINISTRADOR', 1),
+                        ('Angel Villalobos', 'angel.villalobos@vivero.com', 'admin123', 'AGRONOMO', 2),
+                        ('Adelfo Freyle', 'adelfo.freyle@vivero.com', 'admin123', 'OPERADOR', 3),
+                        ('Juan Quintero', 'juan.quintero@vivero.com', 'admin123', 'TECNICO_IOT', 4),
+                        ('Juan Figueroa', 'juan.figueroa@vivero.com', 'admin123', 'VISUALIZADOR', 5),
                     ]
-                    for nom, cor, pas, rol in usuarios_iniciales:
+                    for nom, cor, pas, rol, id_r in usuarios_iniciales:
                         cur.execute("SELECT id_usuario FROM usuarios WHERE correo = %s;", (cor,))
                         if cur.fetchone():
                             cur.execute("""
-                                UPDATE usuarios SET nombre = %s, contrasena_hash = %s, rol = %s, activo = TRUE
+                                UPDATE usuarios SET nombre = %s, contrasena_hash = %s, rol = %s, id_rol = %s, activo = TRUE
                                 WHERE correo = %s;
-                            """, (nom, pas, rol, cor))
+                            """, (nom, pas, rol, id_r, cor))
                         else:
                             cur.execute("""
-                                INSERT INTO usuarios (nombre, correo, contrasena_hash, rol, activo)
-                                VALUES (%s, %s, %s, %s, TRUE);
-                            """, (nom, cor, pas, rol))
+                                INSERT INTO usuarios (nombre, correo, contrasena_hash, rol, id_rol, activo)
+                                VALUES (%s, %s, %s, %s, %s, TRUE);
+                            """, (nom, cor, pas, rol, id_r))
 
                     # 4. Semilla/Sincronización de Sectores asignados al equipo
                     sectores_iniciales = [
@@ -257,9 +306,9 @@ class ViveroRepository:
                             """, (id_s, h_min, h_max, t_max))
 
                     conn.commit()
-                    print("✅ Tablas, sectores y cuentas de usuarios inicializadas correctamente.")
+                    print("[OK] Tablas, roles, sectores y cuentas de usuarios inicializadas correctamente.")
         except Exception as e:
-            print(f"⚠️ Advertencia en init_db: {e}")
+            print(f"[WARN] Advertencia en init_db: {e}")
 
     # --- LECTURAS HUMEDAD ---
     def insert_lectura(self, lectura: LecturaHumedadCreate) -> Dict[str, Any]:
@@ -448,11 +497,23 @@ class ViveroRepository:
                 conn.commit()
                 return dict(res)
 
+    # --- ROLES ---
+    def get_roles(self) -> List[Dict[str, Any]]:
+        with self.db_manager.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT id_rol, nombre_rol, descripcion FROM roles ORDER BY id_rol ASC;")
+                return [dict(row) for row in cur.fetchall()]
+
     # --- GESTIÓN DE USUARIOS ---
     def get_usuarios(self) -> List[Dict[str, Any]]:
         with self.db_manager.get_connection() as conn:
             with conn.cursor() as cur:
-                cur.execute("SELECT id_usuario, nombre, correo, rol, activo, creado_en FROM usuarios ORDER BY id_usuario ASC;")
+                cur.execute("""
+                    SELECT u.id_usuario, u.nombre, u.correo, COALESCE(r.nombre_rol, u.rol) AS rol, u.id_rol, u.activo, u.creado_en
+                    FROM usuarios u
+                    LEFT JOIN roles r ON u.id_rol = r.id_rol
+                    ORDER BY u.id_usuario ASC;
+                """)
                 return [dict(row) for row in cur.fetchall()]
 
     def create_usuario(self, user: UsuarioCreate) -> Dict[str, Any]:
@@ -461,11 +522,28 @@ class ViveroRepository:
                 cur.execute("SELECT id_usuario FROM usuarios WHERE correo = %s;", (user.correo,))
                 if cur.fetchone():
                     raise HTTPException(status_code=400, detail="El correo ya se encuentra registrado.")
+                
+                # Resolver id_rol y nombre_rol
+                id_rol = user.id_rol
+                nombre_rol = (user.rol or "OPERADOR").strip().upper()
+                if id_rol:
+                    cur.execute("SELECT nombre_rol FROM roles WHERE id_rol = %s;", (id_rol,))
+                    row_r = cur.fetchone()
+                    if row_r:
+                        nombre_rol = row_r["nombre_rol"]
+                else:
+                    cur.execute("SELECT id_rol FROM roles WHERE nombre_rol = %s;", (nombre_rol,))
+                    row_r = cur.fetchone()
+                    if row_r:
+                        id_rol = row_r["id_rol"]
+                    else:
+                        id_rol = 3  # OPERADOR por defecto
+
                 cur.execute("""
-                    INSERT INTO usuarios (nombre, correo, contrasena_hash, rol, activo)
-                    VALUES (%s, %s, %s, %s, TRUE)
-                    RETURNING id_usuario, nombre, correo, rol, activo, creado_en;
-                """, (user.nombre, user.correo, user.contrasena, user.rol.upper()))
+                    INSERT INTO usuarios (nombre, correo, contrasena_hash, rol, id_rol, activo)
+                    VALUES (%s, %s, %s, %s, %s, TRUE)
+                    RETURNING id_usuario, nombre, correo, rol, id_rol, activo, creado_en;
+                """, (user.nombre, user.correo, user.contrasena, nombre_rol, id_rol))
                 res = cur.fetchone()
                 conn.commit()
                 return dict(res)
@@ -483,15 +561,29 @@ class ViveroRepository:
                 nuevo_nombre = user.nombre.strip() if (user.nombre and user.nombre.strip()) else current["nombre"]
                 nuevo_correo = user.correo.strip() if (user.correo and user.correo.strip()) else current["correo"]
                 nueva_pass   = user.contrasena.strip() if (user.contrasena and user.contrasena.strip()) else current["contrasena_hash"]
-                nuevo_rol    = user.rol.strip().upper() if (user.rol and user.rol.strip()) else current["rol"]
                 nuevo_activo = user.activo if user.activo is not None else current["activo"]
+
+                # Resolver id_rol y nombre_rol
+                nuevo_id_rol = user.id_rol if user.id_rol is not None else current.get("id_rol")
+                if user.rol and user.rol.strip():
+                    nuevo_rol = user.rol.strip().upper()
+                    cur.execute("SELECT id_rol FROM roles WHERE nombre_rol = %s;", (nuevo_rol,))
+                    row_r = cur.fetchone()
+                    if row_r:
+                        nuevo_id_rol = row_r["id_rol"]
+                elif nuevo_id_rol:
+                    cur.execute("SELECT nombre_rol FROM roles WHERE id_rol = %s;", (nuevo_id_rol,))
+                    row_r = cur.fetchone()
+                    nuevo_rol = row_r["nombre_rol"] if row_r else current["rol"]
+                else:
+                    nuevo_rol = current["rol"]
 
                 cur.execute("""
                     UPDATE usuarios
-                    SET nombre = %s, correo = %s, contrasena_hash = %s, rol = %s, activo = %s
+                    SET nombre = %s, correo = %s, contrasena_hash = %s, rol = %s, id_rol = %s, activo = %s
                     WHERE id_usuario = %s
-                    RETURNING id_usuario, nombre, correo, rol, activo, creado_en;
-                """, (nuevo_nombre, nuevo_correo, nueva_pass, nuevo_rol, nuevo_activo, id_usuario))
+                    RETURNING id_usuario, nombre, correo, rol, id_rol, activo, creado_en;
+                """, (nuevo_nombre, nuevo_correo, nueva_pass, nuevo_rol, nuevo_id_rol, nuevo_activo, id_usuario))
                 res = cur.fetchone()
                 conn.commit()
                 return dict(res)
@@ -509,7 +601,12 @@ class ViveroRepository:
     def authenticate_user(self, correo: str, contrasena: str) -> Dict[str, Any]:
         with self.db_manager.get_connection() as conn:
             with conn.cursor() as cur:
-                cur.execute("SELECT id_usuario, nombre, correo, contrasena_hash, rol, activo FROM usuarios WHERE correo = %s;", (correo,))
+                cur.execute("""
+                    SELECT u.id_usuario, u.nombre, u.correo, u.contrasena_hash, COALESCE(r.nombre_rol, u.rol) AS rol, u.id_rol, u.activo
+                    FROM usuarios u
+                    LEFT JOIN roles r ON u.id_rol = r.id_rol
+                    WHERE u.correo = %s;
+                """, (correo,))
                 user = cur.fetchone()
                 if not user or user["contrasena_hash"] != contrasena:
                     raise HTTPException(status_code=401, detail="Credenciales incorrectas.")
@@ -519,7 +616,8 @@ class ViveroRepository:
                     "id_usuario": user["id_usuario"],
                     "nombre": user["nombre"],
                     "correo": user["correo"],
-                    "rol": user["rol"]
+                    "rol": user["rol"],
+                    "id_rol": user["id_rol"]
                 }
 
 
@@ -683,6 +781,10 @@ def actualizar_sector(id_sector: int, sector: SectorUpdate):
 # =============================================================================
 # ENDPOINTS DE GESTIÓN DE USUARIOS Y ROLES
 # =============================================================================
+
+@app.get("/api/v1/roles", tags=["Usuarios & Roles"], dependencies=[Depends(get_api_key)])
+def listar_roles():
+    return repository.get_roles()
 
 @app.get("/api/v1/usuarios", tags=["Usuarios & Roles"], dependencies=[Depends(get_api_key)])
 def listar_usuarios():

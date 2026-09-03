@@ -90,14 +90,14 @@ graph TD
 
 La aplicación de escritorio cuenta con un motor de permisos estricto que ajusta la interfaz de usuario en tiempo real según el usuario autenticado:
 
-| Funcionalidad | `ADMINISTRADOR` | `AGRONOMO` | `OPERADOR` / `TECNICO_IOT` | `VISUALIZADOR` |
-| :--- | :---: | :---: | :---: | :---: |
-| **Monitoreo en Tiempo Real (Dashboard & Gráficas)** | ✅ | ✅ | ✅ | ✅ |
-| **Exportar Informes Técnicos PDF** | ✅ | ✅ | ✅ | ✅ |
-| **Control Manual (Forzar Riego Remoto)** | ✅ | ✅ | ✅ | 🔒 *Bloqueado* |
-| **Ajuste y Guardado de Umbrales de Riego** | ✅ | ✅ | 🔒 *Solo Lectura* | 🔒 *Solo Lectura* |
-| **Eliminar Mediciones y Alertas** | ✅ | 🔒 *Bloqueado* | 🔒 *Bloqueado* | 🔒 *Bloqueado* |
-| **Gestión de Personal (Crear/Editar/Eliminar)** | ✅ | 🔒 *Solo Consulta* | 🔒 *Solo Consulta* | 🔒 *Solo Consulta* |
+| Funcionalidad | `ADMINISTRADOR` | `AGRONOMO` | `OPERADOR` / `TECNICO_IOT` | `VISUALIZADOR` | `INVITADO` *(Inicio)* |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **Monitoreo en Tiempo Real (Dashboard & Gráficas)** | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Exportar Informes Técnicos PDF** | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Control Manual (Forzar Riego Remoto)** | ✅ | ✅ | ✅ | 🔒 *Bloqueado* | 🔒 *Bloqueado* |
+| **Ajuste y Guardado de Umbrales de Riego** | ✅ | ✅ | 🔒 *Solo Lectura* | 🔒 *Solo Lectura* | 🔒 *Solo Lectura* |
+| **Eliminar Mediciones y Alertas** | ✅ | 🔒 *Bloqueado* | 🔒 *Bloqueado* | 🔒 *Bloqueado* | 🔒 *Bloqueado* |
+| **Gestión de Personal (Crear/Editar/Eliminar)** | ✅ | 🔒 *Solo Consulta* | 🔒 *Solo Consulta* | 🔒 *Solo Consulta* | 🔒 *Solo Consulta* |
 
 ---
 
@@ -106,7 +106,6 @@ La aplicación de escritorio cuenta con un motor de permisos estricto que ajusta
 1. **Barra Superior Global Permanente:**
    * **Selector de Sector Dinámico:** Conmuta automáticamente métricas, historial, umbrales y gráficos al sector deseado.
    * **Ficha del Encargado:** Muestra nombre, rol, correo y cultivo del área activa.
-   * **Selector de Presencia:** Conmuta entre `🟢 En Línea`, `🟡 Ausente` y `🔴 En Campo` con estilos visuales dinámicos.
    * **Cambio de Cuenta Interactivo:** Modal para alternar perfiles o autenticarse mediante correo y contraseña.
 2. **Dashboard en Tiempo Real:**
    * Tarjetas métricas de **Humedad Actual (%)** y **Nivel ADC Crudo**.

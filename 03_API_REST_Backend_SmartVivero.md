@@ -77,16 +77,27 @@ Cataloga las áreas productivas y sus ingenieros/técnicos responsables.
 | `tipo_cultivo` | `VARCHAR(100)` | NOT NULL | Variedad vegetal sembrada en el sector. |
 | `descripcion` | `TEXT` | NULL | Resumen técnico del área. |
 
-### 5. Tabla: `usuarios`
-Gestiona el personal del sistema, roles RBAC y credenciales.
+### 5. Tabla: `roles`
+Catálogo de perfiles y permisos normalizados (3NF) para el control de acceso RBAC.
+
+| Campo | Tipo SQL | Restricción | Descripción |
+| :--- | :--- | :---: | :--- |
+| `id_rol` | `SERIAL` | PK | Identificador único autoincremental del rol. |
+| `nombre_rol` | `VARCHAR(50)` | UNIQUE, NOT NULL | Nombre canónico (`ADMINISTRADOR`, `AGRONOMO`, `OPERADOR`, `TECNICO_IOT`, `VISUALIZADOR`). |
+| `descripcion` | `TEXT` | NULL | Alcance operativo y privilegios del rol. |
+
+### 6. Tabla: `usuarios`
+Gestiona el personal del sistema, credenciales y vinculación foránea con roles.
 
 | Campo | Tipo SQL | Restricción | Descripción |
 | :--- | :--- | :---: | :--- |
 | `id_usuario` | `SERIAL` | PK | Identificador único de usuario. |
 | `nombre` | `VARCHAR(100)` | NOT NULL | Nombre completo. |
-| `correo` | `VARCHAR(100)` | UNIQUE | Correo electrónico de acceso. |
-| `rol` | `VARCHAR(50)` | NOT NULL | Perfil (`ADMINISTRADOR`, `AGRONOMO`, etc.). |
-| `password_hash` | `VARCHAR(255)` | NOT NULL | Contraseña cifrada con hash seguro (SHA-256). |
+| `correo` | `VARCHAR(150)` | UNIQUE, NOT NULL | Correo electrónico de acceso. |
+| `contrasena_hash` | `VARCHAR(255)` | NOT NULL | Contraseña cifrada o hash de autenticación. |
+| `rol` | `VARCHAR(50)` | DEFAULT 'OPERADOR' | Nombre descriptivo del rol (retrocompatibilidad). |
+| `id_rol` | `INTEGER` | FK (`roles.id_rol`) | Clave foránea al catálogo de roles (Normalización 3NF). |
+| `activo` | `BOOLEAN` | DEFAULT TRUE | Estado operativo de la cuenta. |
 | `creado_en` | `TIMESTAMP` | DEFAULT NOW() | Fecha de registro. |
 
 ---
@@ -123,8 +134,9 @@ Gestiona el personal del sistema, roles RBAC y credenciales.
 ### Gestión de Sectores, Personal y Autenticación
 - `GET /api/v1/sectores`: Lista los 5 sectores y sus datos agronómicos.
 - `PUT /api/v1/sectores/{id_sector}`: Actualiza los datos de un sector y su encargado.
-- `GET /api/v1/usuarios`: Lista los usuarios y sus roles asignados.
-- `POST /api/v1/usuarios`: Registra un nuevo usuario con rol y contraseña.
-- `PUT /api/v1/usuarios/{id_usuario}`: Modifica los datos de un usuario (contraseña opcional).
+- `GET /api/v1/roles`: Consulta el catálogo completo de roles normalizados (`id_rol`, `nombre_rol`, `descripcion`).
+- `GET /api/v1/usuarios`: Lista los usuarios con su rol y clave foránea `id_rol` vinculada.
+- `POST /api/v1/usuarios`: Registra un nuevo usuario con asignación de rol (`id_rol` o nombre).
+- `PUT /api/v1/usuarios/{id_usuario}`: Modifica los datos de un usuario (contraseña y rol opcionales).
 - `DELETE /api/v1/usuarios/{id_usuario}`: Elimina un usuario del sistema.
-- `POST /api/v1/auth/login`: Autentica credenciales (correo y contraseña).
+- `POST /api/v1/auth/login`: Autentica credenciales (correo y contraseña) devolviendo `id_usuario`, `rol` e `id_rol`.

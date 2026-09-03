@@ -910,18 +910,10 @@ class VistaRiego(QMainWindow):
         v_encargado.addWidget(self.lbl_top_encargado)
         v_encargado.addWidget(self.lbl_top_correo)
 
-        # 3. Selector de Estado de Presencia y Botón Interactivo de Sesión
-        self.combo_estado_usuario = QComboBox()
-        self.combo_estado_usuario.setFixedWidth(145)
-        self.combo_estado_usuario.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.combo_estado_usuario.addItem("🟢  En Línea", "EN_LINEA")
-        self.combo_estado_usuario.addItem("🟡  Ausente", "AUSENTE")
-        self.combo_estado_usuario.addItem("🔴  En Campo", "EN_CAMPO")
-        self.actualizar_estilo_estado("EN_LINEA")
-
-        self.btn_badge_sesion = QPushButton("👤  Diego Charry (ADMINISTRADOR)  ▾")
+        # 3. Botón Interactivo de Sesión
+        self.btn_badge_sesion = QPushButton("👤  Invitado (INVITADO)  ▾")
         self.btn_badge_sesion.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_badge_sesion.setToolTip("Haz clic para cambiar de cuenta o iniciar sesión")
+        self.btn_badge_sesion.setToolTip("Haz clic para iniciar sesión con tu cuenta")
         self.btn_badge_sesion.setStyleSheet(
             "QPushButton {"
             "   background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1E3048, stop:1 #243450);"
@@ -938,43 +930,9 @@ class VistaRiego(QMainWindow):
         layout_top.addSpacing(10)
         layout_top.addLayout(v_encargado)
         layout_top.addStretch()
-        layout_top.addWidget(self.combo_estado_usuario)
         layout_top.addWidget(self.btn_badge_sesion)
 
         layout_padre.addWidget(self.frame_top_bar)
-
-    def actualizar_estilo_estado(self, estado: str = "EN_LINEA"):
-        """Actualiza los colores y el estilo del selector de presencia según el estado."""
-        estilos = {
-            "EN_LINEA": (
-                "QComboBox {"
-                "   background: #064E3B; color: #34D399; font-size: 11.5px; font-weight: 700;"
-                "   padding: 5px 10px; border-radius: 12px; border: 1px solid #059669;"
-                "}"
-                "QComboBox QAbstractItemView {"
-                "   background-color: #141E2E; color: #E2EAF4; selection-background-color: #064E3B;"
-                "}"
-            ),
-            "AUSENTE": (
-                "QComboBox {"
-                "   background: #451A03; color: #FBBF24; font-size: 11.5px; font-weight: 700;"
-                "   padding: 5px 10px; border-radius: 12px; border: 1px solid #D97706;"
-                "}"
-                "QComboBox QAbstractItemView {"
-                "   background-color: #141E2E; color: #E2EAF4; selection-background-color: #451A03;"
-                "}"
-            ),
-            "EN_CAMPO": (
-                "QComboBox {"
-                "   background: #450A0A; color: #F87171; font-size: 11.5px; font-weight: 700;"
-                "   padding: 5px 10px; border-radius: 12px; border: 1px solid #DC2626;"
-                "}"
-                "QComboBox QAbstractItemView {"
-                "   background-color: #141E2E; color: #E2EAF4; selection-background-color: #450A0A;"
-                "}"
-            ),
-        }
-        self.combo_estado_usuario.setStyleSheet(estilos.get(estado, estilos["EN_LINEA"]))
 
     # -------------------------------------------------------------------------
     # Pantalla Gestión de Personal y Roles
@@ -1149,6 +1107,12 @@ class DialogoCambiarCuenta(QDialog):
         lbl_sel = QLabel("Seleccionar perfil registrado:")
         lbl_sel.setStyleSheet("font-weight: 700; font-size: 12px; margin-top: 4px;")
         self.combo_perfiles = QComboBox()
+        self.combo_perfiles.addItem("👤 Modo Invitado — [INVITADO]", {
+            "id_usuario": 0,
+            "nombre": "Invitado",
+            "correo": "invitado@vivero.com",
+            "rol": "INVITADO"
+        })
         if usuarios:
             for u in usuarios:
                 self.combo_perfiles.addItem(f"👤 {u['nombre']} — [{u.get('rol', 'OPERADOR')}]", u)
@@ -1206,5 +1170,9 @@ class DialogoCambiarCuenta(QDialog):
     def _al_cambiar_perfil(self, idx):
         data = self.combo_perfiles.currentData()
         if data:
-            self.txt_correo.setText(data.get("correo", ""))
-            self.txt_pass.clear()
+            if data.get("rol") == "INVITADO":
+                self.txt_correo.setText("")
+                self.txt_pass.clear()
+            else:
+                self.txt_correo.setText(data.get("correo", ""))
+                self.txt_pass.clear()

@@ -42,10 +42,10 @@ class ControladorRiego:
         self.usuarios_cache = []
         self.sector_activo = 1
         self.usuario_sesion = {
-            "id_usuario": 1,
-            "nombre": "Diego Charry",
-            "correo": "diego.charry@vivero.com",
-            "rol": "ADMINISTRADOR"
+            "id_usuario": 0,
+            "nombre": "Invitado",
+            "correo": "invitado@vivero.com",
+            "rol": "INVITADO"
         }
         
         # Conectar botones del Menú Lateral
@@ -55,9 +55,8 @@ class ControladorRiego:
         self.vista.btn_nav_users.clicked.connect(self.ir_a_usuarios)
         self.vista.btn_nav_docs.clicked.connect(self.exportar_reporte)
         
-        # Barra Superior Global: Selector de Sector, Estado de Presencia y Botón de Cuenta
+        # Barra Superior Global: Selector de Sector y Botón de Cuenta
         self.vista.combo_sector.currentIndexChanged.connect(self.cambiar_sector_activo)
-        self.vista.combo_estado_usuario.currentIndexChanged.connect(self.cambiar_estado_presencia)
         self.vista.btn_badge_sesion.clicked.connect(self.abrir_dialogo_cambiar_cuenta)
 
         # Botones de Acción
@@ -92,8 +91,9 @@ class ControladorRiego:
         self.cargar_sectores_iniciales()
         self.cargar_tabla_usuarios()
 
-        # Aplicar restricciones de seguridad del rol inicial
-        self.aplicar_permisos_rol(self.usuario_sesion.get("rol", "ADMINISTRADOR"))
+        # Aplicar restricciones de seguridad del rol inicial (Modo Invitado)
+        self.aplicar_permisos_rol(self.usuario_sesion.get("rol", "INVITADO"))
+        self.vista.btn_badge_sesion.setText(f"👤  {self.usuario_sesion['nombre']} ({self.usuario_sesion['rol']})  ▾")
 
         # Iniciar Hilo en Segundo Plano (Asíncrono - Cero lag en la interfaz)
         self.hilo = HiloActualizacionDatos(self.modelo, id_sector=self.sector_activo, intervalo_segundos=3)
@@ -478,7 +478,10 @@ class ControladorRiego:
                 if perfil:
                     self.establecer_usuario_sesion(perfil)
                     dlg.accept()
-                    QMessageBox.information(self.vista, "Cuenta Cambiada", f"👤 Sesión cambiada a: {perfil['nombre']} ({perfil.get('rol', 'OPERADOR')}).")
+                    if perfil.get("rol") == "INVITADO":
+                        QMessageBox.information(self.vista, "Modo Invitado", "👤 Has cambiado al Modo Invitado (Solo Lectura).")
+                    else:
+                        QMessageBox.information(self.vista, "Cuenta Cambiada", f"👤 Sesión cambiada a: {perfil['nombre']} ({perfil.get('rol', 'OPERADOR')}).")
                 else:
                     dlg.lbl_error.setText("⚠️ Selecciona un perfil o ingresa tu contraseña.")
 
@@ -516,10 +519,10 @@ class ControladorRiego:
     def aplicar_permisos_rol(self, rol: str):
         """
         Aplica la matriz de permisos de seguridad según el rol del usuario activo:
-          - ADMINISTRADOR: Control total (Umbrales, Forzar Riego, Eliminar Alertas/Historial, Gestión de Personal).
-          - AGRONOMO: Configuración de umbrales y forzar riego. Sin permisos de eliminación ni gestión de personal.
+          - INVITADO / VISUALIZADOR: Solo lectura (Dashboard, Gráficas y Reportes). Todas las acciones destructivas y de control bloqueadas.
           - OPERADOR / TECNICO_IOT: Forzar riego y monitoreo. Umbrales, eliminación y personal bloqueados.
-          - VISUALIZADOR: Solo lectura (Dashboard, Gráficas y Reportes). Todas las acciones destructivas y de control bloqueadas.
+          - AGRONOMO: Configuración de umbrales y forzar riego. Sin permisos de eliminación ni gestión de personal.
+          - ADMINISTRADOR: Control total (Umbrales, Forzar Riego, Eliminar Alertas/Historial, Gestión de Personal).
         """
         rol = str(rol).upper()
         es_admin = (rol == "ADMINISTRADOR")
@@ -531,7 +534,7 @@ class ControladorRiego:
         self.vista.btn_eliminar_alerta.setEnabled(es_admin)
         self.vista.btn_sel_todo_alertas.setEnabled(es_admin)
         self.vista.btn_sel_todo_historial.setEnabled(es_admin)
-        tooltip_elim = "Eliminar registros seleccionados" if es_admin else "🔒 Bloqueado: Solo Administradores pueden eliminar registros históricos."
+        tooltip_elim = "Eliminar registros seleccionados" if es_admin else f"🔒 Bloqueado: Rol {rol}. Solo Administradores pueden eliminar registros históricos."
         self.vista.btn_eliminar_medicion.setToolTip(tooltip_elim)
         self.vista.btn_eliminar_alerta.setToolTip(tooltip_elim)
 
@@ -541,7 +544,8 @@ class ControladorRiego:
         self.vista.input_hum_max.setEnabled(es_agronomo)
         self.vista.input_tiempo_max.setEnabled(es_agronomo)
         if not es_agronomo:
-            self.vista.lbl_estado_params.setText(f"🔒 Rol {rol}: Solo lectura. No tienes permisos para modificar umbrales.")
+            msg_params = "🔒 Modo Invitado (Solo Lectura): Inicia sesión para modificar umbrales." if rol == "INVITADO" else f"🔒 Rol {rol}: Solo lectura. No tienes permisos para modificar umbrales."
+            self.vista.lbl_estado_params.setText(msg_params)
             self.vista.lbl_estado_params.setStyleSheet("color: #F59E0B; font-size: 12px; font-weight: bold;")
             self.vista.btn_guardar_params.setToolTip("🔒 Bloqueado: Requiere rol ADMINISTRADOR o AGRÓNOMO.")
         else:
@@ -552,8 +556,9 @@ class ControladorRiego:
         self.vista.btn_forzar_riego.setEnabled(es_operador)
         self.vista.spin_duracion_riego.setEnabled(es_operador)
         if not es_operador:
-            self.vista.btn_forzar_riego.setToolTip("🔒 Bloqueado: Rol VISUALIZADOR en modo solo lectura.")
-            self.vista.lbl_estado_riego.setText("🔒 Modo Solo Lectura: Control manual restringido.")
+            msg_riego = "Modo Invitado: Inicia sesión para activar riego manual." if rol == "INVITADO" else "Rol VISUALIZADOR en modo solo lectura."
+            self.vista.btn_forzar_riego.setToolTip(f"🔒 Bloqueado: {msg_riego}")
+            self.vista.lbl_estado_riego.setText(f"🔒 {msg_riego}")
             self.vista.lbl_estado_riego.setStyleSheet("color: #F59E0B; font-size: 11.5px; font-weight: bold; background: transparent;")
         else:
             self.vista.btn_forzar_riego.setToolTip("Activar bomba de riego de forma manual")
@@ -567,19 +572,14 @@ class ControladorRiego:
         self.vista.txt_user_correo.setEnabled(es_admin)
         self.vista.txt_user_pass.setEnabled(es_admin)
         self.vista.combo_user_rol.setEnabled(es_admin)
-        tooltip_edit = "Editar el usuario marcado en la tabla" if es_admin else "🔒 Bloqueado: Solo Administradores pueden editar miembros."
+        tooltip_edit = "Editar el usuario marcado en la tabla" if es_admin else f"🔒 Bloqueado: Rol {rol}. Solo Administradores pueden registrar o editar personal."
         self.vista.btn_editar_usuario.setToolTip(tooltip_edit)
         if not es_admin:
-            self.vista.lbl_estado_usuarios.setText(f"🔒 Rol {rol}: Solo consulta. Solo Administradores pueden registrar, editar o eliminar miembros.")
+            msg_user = "🔒 Modo Invitado: Solo consulta. Inicia sesión como Administrador para gestionar personal." if rol == "INVITADO" else f"🔒 Rol {rol}: Solo consulta. Solo Administradores pueden registrar, editar o eliminar miembros."
+            self.vista.lbl_estado_usuarios.setText(msg_user)
             self.vista.lbl_estado_usuarios.setStyleSheet("color: #F59E0B; font-size: 12px; font-weight: bold;")
         else:
             self.vista.lbl_estado_usuarios.setText("")
-
-    def cambiar_estado_presencia(self, index: int):
-        """Actualiza los estilos visuales cuando el operador cambia su estado (En Línea, Ausente, En Campo)."""
-        estado_id = self.vista.combo_estado_usuario.currentData()
-        if estado_id:
-            self.vista.actualizar_estilo_estado(estado_id)
 
     # =========================================================================
     # GESTIÓN DE PERSONAL Y USUARIOS
