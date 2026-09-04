@@ -206,6 +206,11 @@ class ViveroRepository:
                         ('OPERADOR', 'Operación de riego y supervisión en campo'),
                         ('TECNICO_IOT', 'Mantenimiento de nodos sensores y actuadores ESP32'),
                         ('VISUALIZADOR', 'Monitoreo en tiempo real y solo lectura'),
+                        ('AUDITOR_CALIDAD', 'Auditoría de parámetros ambientales y trazabilidad del cultivo'),
+                        ('SUPERVISOR_RIEGO', 'Monitoreo hidráulico de electroválvulas y bombas principales'),
+                        ('BOTANICO', 'Especialista en botánica, nutrición vegetal y fitosanidad'),
+                        ('TECNICO_MANTENIMIENTO', 'Mantenimiento preventivo electromecánico e hidráulico'),
+                        ('INVESTIGADOR', 'Ensayos agronómicos, microclimas y experimentación'),
                     ]
                     for nom_r, desc_r in roles_iniciales:
                         cur.execute("""
@@ -252,7 +257,7 @@ class ViveroRepository:
                         );
                     """)
 
-                    # 4. Semilla/Sincronización de los 5 Usuarios del Grupo 3 con Hash SHA-256
+                    # 4. Semilla de Usuarios (10 Usuarios con Hash SHA-256)
                     pass_semilla_hash = hash_contrasena('admin123')
                     usuarios_iniciales = [
                         ('Diego Charry', 'diego.charry@vivero.com', pass_semilla_hash, 'ADMINISTRADOR', 1),
@@ -260,12 +265,16 @@ class ViveroRepository:
                         ('Adelfo Freyle', 'adelfo.freyle@vivero.com', pass_semilla_hash, 'OPERADOR', 3),
                         ('Juan Quintero', 'juan.quintero@vivero.com', pass_semilla_hash, 'TECNICO_IOT', 4),
                         ('Juan Figueroa', 'juan.figueroa@vivero.com', pass_semilla_hash, 'VISUALIZADOR', 5),
+                        ('Carlos Mendoza', 'carlos.mendoza@vivero.com', pass_semilla_hash, 'AUDITOR_CALIDAD', 6),
+                        ('Laura Restrepo', 'laura.restrepo@vivero.com', pass_semilla_hash, 'SUPERVISOR_RIEGO', 7),
+                        ('Andres Silva', 'andres.silva@vivero.com', pass_semilla_hash, 'BOTANICO', 8),
+                        ('Maria Gomez', 'maria.gomez@vivero.com', pass_semilla_hash, 'TECNICO_MANTENIMIENTO', 9),
+                        ('Fabian Ortiz', 'fabian.ortiz@vivero.com', pass_semilla_hash, 'INVESTIGADOR', 10),
                     ]
                     for nom, cor, pas, rol, id_r in usuarios_iniciales:
                         cur.execute("SELECT id_usuario, contrasena_hash FROM usuarios WHERE correo = %s;", (cor,))
                         row_u = cur.fetchone()
                         if row_u:
-                            # Si la contraseña existente no tiene 64 caracteres (no es SHA-256), actualizarla al hash
                             cur.execute("""
                                 UPDATE usuarios SET nombre = %s, contrasena_hash = %s, rol = %s, id_rol = %s, activo = TRUE
                                 WHERE correo = %s;
@@ -276,20 +285,18 @@ class ViveroRepository:
                                 VALUES (%s, %s, %s, %s, %s, TRUE);
                             """, (nom, cor, pas, rol, id_r))
 
-                    # Migración automática: cifrar cualquier contraseña legacy en texto plano restante
-                    cur.execute("SELECT id_usuario, contrasena_hash FROM usuarios;")
-                    for u_row in cur.fetchall():
-                        c_val = u_row["contrasena_hash"]
-                        if len(c_val) != 64:
-                            cur.execute("UPDATE usuarios SET contrasena_hash = %s WHERE id_usuario = %s;", (hash_contrasena(c_val), u_row["id_usuario"]))
-
-                    # 4. Semilla/Sincronización de Sectores asignados al equipo
+                    # 5. Semilla de Sectores (10 Sectores)
                     sectores_iniciales = [
                         (1, 'Invernadero 1 (Principal)', 'Diego Charry', 'diego.charry@vivero.com', 'Administrador General', 'Orquídeas y Suculentas', 'Sector de telemetría IoT ESP32 automatizado'),
                         (2, 'Invernadero 2 (Cultivo Agrónomo)', 'Angel Villalobos', 'angel.villalobos@vivero.com', 'Ingeniero Agrónomo', 'Hortalizas y Tomates', 'Monitoreo de suelo y fertilización'),
                         (3, 'Invernadero 3 (Riego Automatizado)', 'Adelfo Freyle', 'adelfo.freyle@vivero.com', 'Operador de Riego', 'Semilleros y Flores', 'Área de aspersión y control de humedad'),
                         (4, 'Invernadero 4 (Laboratorio IoT)', 'Juan Quintero', 'juan.quintero@vivero.com', 'Técnico en Sistemas IoT', 'Cultivo Experimental', 'Banco de pruebas de sensores y actuadores ESP32'),
                         (5, 'Invernadero 5 (Supervisión)', 'Juan Figueroa', 'juan.figueroa@vivero.com', 'Monitor y Visualizador', 'Plantas Ornamentales', 'Supervisión y control de calidad'),
+                        (6, 'Invernadero 6 (Cactáceas)', 'Carlos Mendoza', 'carlos.mendoza@vivero.com', 'Auditor de Calidad', 'Cactus y Suculentas Desérticas', 'Sector árido de bajo consumo de agua'),
+                        (7, 'Invernadero 7 (Aromáticas)', 'Laura Restrepo', 'laura.restrepo@vivero.com', 'Supervisora de Riego', 'Albahaca, Menta y Romero', 'Hierbas culinarias y medicinales'),
+                        (8, 'Invernadero 8 (Frutales Menores)', 'Andres Silva', 'andres.silva@vivero.com', 'Botánico Especialista', 'Fresas y Berries Hidropónicos', 'Mesa de cultivo hidropónico con fertirriego'),
+                        (9, 'Invernadero 9 (Follaje Tropical)', 'Maria Gomez', 'maria.gomez@vivero.com', 'Técnica de Mantenimiento', 'Helechos y Monsteras', 'Cámara de alta humedad relativa y microaspersión'),
+                        (10, 'Invernadero 10 (Germinación Forestal)', 'Fabian Ortiz', 'fabian.ortiz@vivero.com', 'Investigador Agrícola', 'Brotes y Plántulas Nativas', 'Propagación de árboles nativos y reforestación'),
                     ]
                     for id_s, nom_s, enc_n, enc_c, enc_r, cul, des in sectores_iniciales:
                         cur.execute("SELECT id_sector FROM sectores WHERE id_sector = %s;", (id_s,))
@@ -304,23 +311,39 @@ class ViveroRepository:
                                 VALUES (%s, %s, %s, %s, %s, %s, %s);
                             """, (id_s, nom_s, enc_n, enc_c, enc_r, cul, des))
 
-                    # 5. Asegurar umbrales para sectores 1 a 5
+                    # 6. Tabla Umbrales de Configuración (10 Sectores)
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS umbrales_configuracion (
+                            id_umbral SERIAL PRIMARY KEY,
+                            id_sector INT UNIQUE REFERENCES sectores(id_sector) ON DELETE CASCADE,
+                            humedad_min_on NUMERIC(5,2) NOT NULL,
+                            humedad_max_off NUMERIC(5,2) NOT NULL,
+                            tiempo_max_riego_seg INT NOT NULL,
+                            id_usuario_modifica INT REFERENCES usuarios(id_usuario),
+                            actualizado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        );
+                    """)
                     umbrales_iniciales = [
-                        (1, 35.0, 70.0, 180),
-                        (2, 40.0, 75.0, 150),
-                        (3, 45.0, 80.0, 200),
-                        (4, 30.0, 65.0, 120),
-                        (5, 38.0, 72.0, 160),
+                        (1, 35.0, 70.0, 180, 1),
+                        (2, 40.0, 75.0, 150, 2),
+                        (3, 45.0, 80.0, 200, 3),
+                        (4, 30.0, 65.0, 120, 4),
+                        (5, 38.0, 72.0, 160, 5),
+                        (6, 25.0, 45.0, 90, 1),
+                        (7, 40.0, 65.0, 120, 2),
+                        (8, 55.0, 75.0, 150, 2),
+                        (9, 60.0, 85.0, 180, 1),
+                        (10, 50.0, 70.0, 120, 1),
                     ]
-                    for id_s, h_min, h_max, t_max in umbrales_iniciales:
+                    for id_s, h_min, h_max, t_max, id_u in umbrales_iniciales:
                         cur.execute("SELECT id_sector FROM umbrales_configuracion WHERE id_sector = %s;", (id_s,))
                         if not cur.fetchone():
                             cur.execute("""
                                 INSERT INTO umbrales_configuracion (id_sector, humedad_min_on, humedad_max_off, tiempo_max_riego_seg, id_usuario_modifica)
-                                VALUES (%s, %s, %s, %s, 1);
-                            """, (id_s, h_min, h_max, t_max))
+                                VALUES (%s, %s, %s, %s, %s);
+                            """, (id_s, h_min, h_max, t_max, id_u))
 
-                    # 5. Tabla de Estado y Heartbeat de Dispositivos ESP32 (Liveness)
+                    # 7. Tabla de Estado y Heartbeat de Dispositivos ESP32 (10 Nodos)
                     cur.execute("""
                         CREATE TABLE IF NOT EXISTS estado_dispositivos (
                             id_dispositivo VARCHAR(50) PRIMARY KEY,
@@ -337,6 +360,11 @@ class ViveroRepository:
                         ('ESP32-S03-OPERADOR', 3, 'EN_LINEA', '192.168.1.52', 'v1.0.0'),
                         ('ESP32-S04-TECNICO', 4, 'EN_LINEA', '192.168.1.53', 'v1.0.0'),
                         ('ESP32-S05-SUPERVISION', 5, 'EN_LINEA', '192.168.1.54', 'v1.0.0'),
+                        ('ESP32-S06-CACTUS', 6, 'EN_LINEA', '192.168.1.55', 'v1.0.0'),
+                        ('ESP32-S07-AROMATICAS', 7, 'EN_LINEA', '192.168.1.56', 'v1.0.0'),
+                        ('ESP32-S08-FRUTALES', 8, 'EN_LINEA', '192.168.1.57', 'v1.0.0'),
+                        ('ESP32-S09-TROPICAL', 9, 'EN_LINEA', '192.168.1.58', 'v1.0.0'),
+                        ('ESP32-S10-FORESTAL', 10, 'EN_LINEA', '192.168.1.59', 'v1.0.0'),
                     ]
                     for id_d, id_s, est, ip, ver in dispositivos_semilla:
                         cur.execute("""
