@@ -1016,8 +1016,8 @@ class VistaRiego(QMainWindow):
         lbl_tab_title.setStyleSheet("font-weight: 700; font-size: 12px; color: #10B981; letter-spacing: 0.5px;")
         v_tab.addWidget(lbl_tab_title)
 
-        self.tabla_usuarios = QTableWidget(0, 7)
-        self.tabla_usuarios.setHorizontalHeaderLabels(["", "ID", "Nombre", "Correo", "Rol", "Estado", "Fecha Registro"])
+        self.tabla_usuarios = QTableWidget(0, 6)
+        self.tabla_usuarios.setHorizontalHeaderLabels(["", "ID", "Nombre", "Correo", "Rol", "Fecha Registro"])
         self.tabla_usuarios.setColumnWidth(0, 42)
         self.tabla_usuarios.setTextElideMode(Qt.TextElideMode.ElideNone)
         self.tabla_usuarios.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
@@ -1030,7 +1030,6 @@ class VistaRiego(QMainWindow):
         header_u.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
         header_u.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
         header_u.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
-        header_u.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
         self.tabla_usuarios.setAlternatingRowColors(True)
         self.tabla_usuarios.verticalHeader().setVisible(False)
         self.tabla_usuarios.setShowGrid(True)

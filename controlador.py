@@ -615,9 +615,6 @@ class ControladorRiego:
             cor_item = QTableWidgetItem(str(u.get("correo", "")))
             rol_item = QTableWidgetItem(str(u.get("rol", "")))
             rol_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            est_str = "🟢 Activo" if u.get("activo", True) else "🔴 Inactivo"
-            est_item = QTableWidgetItem(est_str)
-            est_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             f_raw = str(u.get("creado_en", "")).split("T")[0]
             f_item = QTableWidgetItem(f_raw)
             f_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -626,8 +623,7 @@ class ControladorRiego:
             self.vista.tabla_usuarios.setItem(fila_idx, 2, nom_item)
             self.vista.tabla_usuarios.setItem(fila_idx, 3, cor_item)
             self.vista.tabla_usuarios.setItem(fila_idx, 4, rol_item)
-            self.vista.tabla_usuarios.setItem(fila_idx, 5, est_item)
-            self.vista.tabla_usuarios.setItem(fila_idx, 6, f_item)
+            self.vista.tabla_usuarios.setItem(fila_idx, 5, f_item)
 
         self.vista.tabla_usuarios.setColumnWidth(0, 42)
 
