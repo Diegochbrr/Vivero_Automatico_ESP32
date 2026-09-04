@@ -320,8 +320,33 @@ class ViveroRepository:
                                 VALUES (%s, %s, %s, %s, 1);
                             """, (id_s, h_min, h_max, t_max))
 
+                    # 5. Tabla de Estado y Heartbeat de Dispositivos ESP32 (Liveness)
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS estado_dispositivos (
+                            id_dispositivo VARCHAR(50) PRIMARY KEY,
+                            id_sector INT REFERENCES sectores(id_sector) ON DELETE CASCADE,
+                            estado_conexion VARCHAR(20) DEFAULT 'EN_LINEA',
+                            ip_origen VARCHAR(45) DEFAULT '192.168.1.50',
+                            version_firmware VARCHAR(20) DEFAULT 'v1.0.0',
+                            ultimo_ping TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        );
+                    """)
+                    dispositivos_semilla = [
+                        ('ESP32-S01-PRINCIPAL', 1, 'EN_LINEA', '192.168.1.50', 'v1.0.0'),
+                        ('ESP32-S02-AGRONOMO', 2, 'EN_LINEA', '192.168.1.51', 'v1.0.0'),
+                        ('ESP32-S03-OPERADOR', 3, 'EN_LINEA', '192.168.1.52', 'v1.0.0'),
+                        ('ESP32-S04-TECNICO', 4, 'EN_LINEA', '192.168.1.53', 'v1.0.0'),
+                        ('ESP32-S05-SUPERVISION', 5, 'EN_LINEA', '192.168.1.54', 'v1.0.0'),
+                    ]
+                    for id_d, id_s, est, ip, ver in dispositivos_semilla:
+                        cur.execute("""
+                            INSERT INTO estado_dispositivos (id_dispositivo, id_sector, estado_conexion, ip_origen, version_firmware, ultimo_ping)
+                            VALUES (%s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                            ON CONFLICT (id_dispositivo) DO NOTHING;
+                        """, (id_d, id_s, est, ip, ver))
+
                     conn.commit()
-                    print("[OK] Tablas, roles, sectores y cuentas de usuarios inicializadas correctamente.")
+                    print("[OK] Tablas, roles, sectores, dispositivos y cuentas de usuarios inicializadas correctamente.")
         except Exception as e:
             print(f"[WARN] Advertencia en init_db: {e}")
 
@@ -336,6 +361,14 @@ class ViveroRepository:
                 """
                 cur.execute(query, (lectura.id_sensor, lectura.id_sector, lectura.humedad_porcentaje, lectura.valor_adc_crudo))
                 result = cur.fetchone()
+                
+                # Actualizar automáticamente el heartbeat del dispositivo del sector
+                cur.execute("""
+                    UPDATE estado_dispositivos
+                    SET ultimo_ping = CURRENT_TIMESTAMP, estado_conexion = 'EN_LINEA'
+                    WHERE id_sector = %s;
+                """, (lectura.id_sector,))
+
                 conn.commit()
                 return dict(result)
 
@@ -460,6 +493,17 @@ class ViveroRepository:
         umbral = self.get_umbral_by_sector(id_sector)
         if not umbral:
             raise HTTPException(status_code=404, detail=f"No existe configuración para el sector {id_sector}")
+        
+        # Registrar heartbeat del ESP32 que realiza el polling
+        with self.db_manager.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    UPDATE estado_dispositivos
+                    SET ultimo_ping = CURRENT_TIMESTAMP, estado_conexion = 'EN_LINEA'
+                    WHERE id_sector = %s;
+                """, (id_sector,))
+                conn.commit()
+
         cmd = _comandos_pendientes.get(id_sector, {})
         return {
             "humedad_min_on": float(umbral["humedad_min_on"]),
@@ -517,6 +561,18 @@ class ViveroRepository:
         with self.db_manager.get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT id_rol, nombre_rol, descripcion FROM roles ORDER BY id_rol ASC;")
+                return [dict(row) for row in cur.fetchall()]
+
+    # --- ESTADO DISPOSITIVOS (HEARTBEAT IOT) ---
+    def get_estado_dispositivos(self) -> List[Dict[str, Any]]:
+        with self.db_manager.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT ed.id_dispositivo, ed.id_sector, s.nombre_sector, ed.estado_conexion, ed.ip_origen, ed.version_firmware, ed.ultimo_ping
+                    FROM estado_dispositivos ed
+                    LEFT JOIN sectores s ON ed.id_sector = s.id_sector
+                    ORDER BY ed.id_sector ASC;
+                """)
                 return [dict(row) for row in cur.fetchall()]
 
     # --- GESTIÓN DE USUARIOS ---
@@ -779,6 +835,15 @@ def fijar_sector_activo_sistema(id_sector: int):
     global _sector_activo_sistema
     _sector_activo_sistema = id_sector
     return {"mensaje": f"Sector activo del sistema actualizado a {id_sector}", "sector_activo": id_sector}
+
+
+@app.get("/api/v1/sistema/dispositivos",
+         tags=["Comandos ESP32"],
+         summary="Monitoreo de estado y heartbeat de nodos ESP32",
+         dependencies=[Depends(get_api_key)])
+def listar_estado_dispositivos():
+    """Devuelve el estado de conectividad en tiempo real y último ping de cada nodo ESP32."""
+    return repository.get_estado_dispositivos()
 
 
 # =============================================================================

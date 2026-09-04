@@ -100,6 +100,18 @@ Gestiona el personal del sistema, credenciales y vinculación foránea con roles
 | `activo` | `BOOLEAN` | DEFAULT TRUE | Estado operativo de la cuenta. |
 | `creado_en` | `TIMESTAMP` | DEFAULT NOW() | Fecha de registro. |
 
+### 7. Tabla: `estado_dispositivos`
+Monitoreo de conectividad en tiempo real (*Heartbeat / Liveness*) de los microcontroladores ESP32 asociados a cada sector.
+
+| Campo | Tipo SQL | Restricción | Descripción |
+| :--- | :--- | :---: | :--- |
+| `id_dispositivo` | `VARCHAR(50)` | PK | Identificador canónico del nodo IoT (`ESP32-S01-PRINCIPAL`). |
+| `id_sector` | `INTEGER` | FK (`sectores.id_sector`) | Sector agronómico asignado. |
+| `estado_conexion` | `VARCHAR(20)` | DEFAULT 'EN_LINEA' | Estado operativo (`EN_LINEA`, `DESCONECTADO`). |
+| `ip_origen` | `VARCHAR(45)` | NOT NULL | Dirección IP de red del microcontrolador. |
+| `version_firmware` | `VARCHAR(20)` | NOT NULL | Versión del firmware MicroPython en ejecución. |
+| `ultimo_ping` | `TIMESTAMP` | DEFAULT NOW() | Fecha y hora exacta de la última comunicación bidireccional. |
+
 ---
 
 ## Catálogo de Endpoints de la API REST
@@ -109,7 +121,7 @@ Gestiona el personal del sistema, credenciales y vinculación foránea con roles
 - `GET /health`: Valida la conectividad con PostgreSQL en Neon Cloud.
 
 ### Telemetría de Suelo (Lecturas de Humedad)
-- `POST /api/v1/mediciones`: Inserta una nueva medición proveniente del ESP32.
+- `POST /api/v1/mediciones`: Inserta una nueva medición proveniente del ESP32 y actualiza automáticamente el heartbeat en `estado_dispositivos`.
   - Body: `{"id_sensor": "SEN-CAP-S01", "id_sector": 1, "humedad_porcentaje": 45.2, "valor_adc_crudo": 1850}`
 - `GET /api/v1/mediciones`: Obtiene el historial general de telemetría.
 - `GET /api/v1/mediciones/sector/{id_sector}?limit=50`: Obtiene las mediciones recientes de un sector específico.
@@ -125,11 +137,12 @@ Gestiona el personal del sistema, credenciales y vinculación foránea con roles
 - `PUT /api/v1/umbrales/{id_sector}`: Actualiza los umbrales de humedad y tiempo máximo de bomba.
 
 ### Comandos de Control Remoto y Sincronización
-- `GET /api/v1/comandos/{id_sector}`: Polling consultado por el ESP32 para verificar órdenes pendientes.
+- `GET /api/v1/comandos/{id_sector}`: Polling consultado por el ESP32 para verificar órdenes pendientes (refresca automáticamente el heartbeat).
 - `POST /api/v1/comandos/forzar-riego/{id_sector}`: Encola una orden de forzar riego manual remoto con duración en segundos.
 - `DELETE /api/v1/comandos/forzar-riego/{id_sector}`: Notificación de confirmación (ACK) enviada por el ESP32 tras cumplir el riego.
 - `GET /api/v1/sistema/sector-activo`: Devuelve el sector activo seleccionado globalmente.
 - `PUT /api/v1/sistema/sector-activo/{id_sector}`: Establece el sector activo para sincronizar en tiempo real el simulador Wokwi.
+- `GET /api/v1/sistema/dispositivos`: Devuelve el estado de conectividad en tiempo real, versión de firmware y último ping de cada nodo ESP32.
 
 ### Gestión de Sectores, Personal y Autenticación
 - `GET /api/v1/sectores`: Lista los 5 sectores y sus datos agronómicos.
