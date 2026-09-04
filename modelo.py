@@ -296,6 +296,16 @@ class ModeloRiego:
             print(f"Error obteniendo usuarios: {e}")
         return []
 
+    def obtener_roles(self):
+        """Obtiene la lista de roles/ocupaciones registrados en la base de datos."""
+        try:
+            res = requests.get(f"{self.api_url}/roles", headers={"X-API-Key": self.api_key}, timeout=4)
+            if res.status_code == 200:
+                return res.json()
+        except Exception as e:
+            print(f"Error obteniendo roles: {e}")
+        return []
+
     def crear_usuario(self, nombre: str, correo: str, contrasena: str, rol: str) -> bool:
         """Crea un nuevo usuario en la API."""
         try:

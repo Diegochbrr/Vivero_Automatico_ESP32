@@ -622,7 +622,7 @@ class ViveroRepository:
                 if cur.fetchone():
                     raise HTTPException(status_code=400, detail="El correo ya se encuentra registrado.")
                 
-                # Resolver id_rol y nombre_rol
+                # Resolver id_rol y nombre_rol (permite registrar ocupaciones manuales dinámicamente)
                 id_rol = user.id_rol
                 nombre_rol = (user.rol or "OPERADOR").strip().upper()
                 if id_rol:
@@ -631,12 +631,22 @@ class ViveroRepository:
                     if row_r:
                         nombre_rol = row_r["nombre_rol"]
                 else:
-                    cur.execute("SELECT id_rol FROM roles WHERE nombre_rol = %s;", (nombre_rol,))
+                    cur.execute("SELECT id_rol, nombre_rol FROM roles WHERE UPPER(nombre_rol) = UPPER(%s);", (nombre_rol,))
                     row_r = cur.fetchone()
                     if row_r:
                         id_rol = row_r["id_rol"]
+                        nombre_rol = row_r["nombre_rol"]
                     else:
-                        id_rol = 3  # OPERADOR por defecto
+                        # Si es una ocupación escrita manualmente, se registra en la tabla roles (3NF)
+                        cur.execute("""
+                            INSERT INTO roles (nombre_rol, descripcion)
+                            VALUES (%s, %s)
+                            ON CONFLICT (nombre_rol) DO UPDATE SET nombre_rol = EXCLUDED.nombre_rol
+                            RETURNING id_rol, nombre_rol;
+                        """, (nombre_rol, f"Ocupación registrada: {nombre_rol}"))
+                        row_new = cur.fetchone()
+                        id_rol = row_new["id_rol"]
+                        nombre_rol = row_new["nombre_rol"]
 
                 # Cifrar contraseña con hash criptográfico SHA-256
                 pass_hash = hash_contrasena(user.contrasena.strip())
@@ -669,10 +679,22 @@ class ViveroRepository:
                 nuevo_id_rol = user.id_rol if user.id_rol is not None else current.get("id_rol")
                 if user.rol and user.rol.strip():
                     nuevo_rol = user.rol.strip().upper()
-                    cur.execute("SELECT id_rol FROM roles WHERE nombre_rol = %s;", (nuevo_rol,))
+                    cur.execute("SELECT id_rol, nombre_rol FROM roles WHERE UPPER(nombre_rol) = UPPER(%s);", (nuevo_rol,))
                     row_r = cur.fetchone()
                     if row_r:
                         nuevo_id_rol = row_r["id_rol"]
+                        nuevo_rol = row_r["nombre_rol"]
+                    else:
+                        # Si es una ocupación escrita manualmente, se registra en la tabla roles
+                        cur.execute("""
+                            INSERT INTO roles (nombre_rol, descripcion)
+                            VALUES (%s, %s)
+                            ON CONFLICT (nombre_rol) DO UPDATE SET nombre_rol = EXCLUDED.nombre_rol
+                            RETURNING id_rol, nombre_rol;
+                        """, (nuevo_rol, f"Ocupación registrada: {nuevo_rol}"))
+                        row_new = cur.fetchone()
+                        nuevo_id_rol = row_new["id_rol"]
+                        nuevo_rol = row_new["nombre_rol"]
                 elif nuevo_id_rol:
                     cur.execute("SELECT nombre_rol FROM roles WHERE id_rol = %s;", (nuevo_id_rol,))
                     row_r = cur.fetchone()

@@ -43,8 +43,16 @@ CSS_OSCURO = """
         border: 1.5px solid #1E3048;
         border-radius: 8px; padding: 6px 12px; font-size: 13px; font-weight: 600;
     }
-    QComboBox:focus { border: 1.5px solid #0EA5E9; }
+    QComboBox:editable {
+        background-color: #0B1120; color: #E2EAF4;
+    }
+    QComboBox:focus, QComboBox:editable:focus { border: 1.5px solid #0EA5E9; }
     QComboBox::drop-down { border: none; width: 24px; }
+    QComboBox QLineEdit {
+        background-color: transparent; color: #E2EAF4;
+        border: none; font-size: 13px; font-weight: 600;
+        selection-background-color: #0EA5E9; selection-color: white;
+    }
     QComboBox QAbstractItemView {
         background-color: #141E2E; color: #E2EAF4;
         selection-background-color: #0EA5E9; selection-color: white;
@@ -197,8 +205,16 @@ CSS_CLARO = """
         border: 1.5px solid #DDE6EF;
         border-radius: 8px; padding: 6px 12px; font-size: 13px; font-weight: 600;
     }
-    QComboBox:focus { border: 1.5px solid #0284C7; }
+    QComboBox:editable {
+        background-color: #F0F4F8; color: #1E2D3D;
+    }
+    QComboBox:focus, QComboBox:editable:focus { border: 1.5px solid #0284C7; }
     QComboBox::drop-down { border: none; width: 24px; }
+    QComboBox QLineEdit {
+        background-color: transparent; color: #1E2D3D;
+        border: none; font-size: 13px; font-weight: 600;
+        selection-background-color: #0284C7; selection-color: white;
+    }
     QComboBox QAbstractItemView {
         background-color: #FFFFFF; color: #1E2D3D;
         selection-background-color: #EBF4FF; selection-color: #0284C7;
@@ -978,8 +994,16 @@ class VistaRiego(QMainWindow):
         self.txt_user_pass.setEchoMode(QLineEdit.EchoMode.Password)
 
         self.combo_user_rol = QComboBox()
-        self.combo_user_rol.addItems(["ADMINISTRADOR", "OPERADOR", "AGRONOMO", "VISUALIZADOR", "TECNICO_IOT"])
-        self.combo_user_rol.setFixedWidth(160)
+        self.combo_user_rol.setEditable(True)
+        self.combo_user_rol.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        if self.combo_user_rol.lineEdit():
+            self.combo_user_rol.lineEdit().setPlaceholderText("Rol u ocupación...")
+        self.combo_user_rol.addItems([
+            "ADMINISTRADOR", "AGRONOMO", "OPERADOR", "TECNICO_IOT", "VISUALIZADOR",
+            "AUDITOR_CALIDAD", "SUPERVISOR_RIEGO", "BOTANICO", "TECNICO_MANTENIMIENTO", "INVESTIGADOR",
+            "➕ Escribir ocupación manual..."
+        ])
+        self.combo_user_rol.setMinimumWidth(180)
 
         self.btn_guardar_usuario = QPushButton("💾  Registrar")
         self.btn_guardar_usuario.setProperty("class", "btn_accion")
@@ -995,7 +1019,7 @@ class VistaRiego(QMainWindow):
         h_inputs.addWidget(self.txt_user_nombre, 2)
         h_inputs.addWidget(self.txt_user_correo, 2)
         h_inputs.addWidget(self.txt_user_pass, 2)
-        h_inputs.addWidget(self.combo_user_rol, 1)
+        h_inputs.addWidget(self.combo_user_rol, 2)
         h_inputs.addWidget(self.btn_guardar_usuario)
         h_inputs.addWidget(self.btn_cancelar_edicion)
         f_layout.addLayout(h_inputs)

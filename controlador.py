@@ -86,6 +86,7 @@ class ControladorRiego:
         self.vista.btn_eliminar_usuario.clicked.connect(self.eliminar_usuario_seleccionado)
         self.vista.btn_refrescar_usuarios.clicked.connect(self.cargar_tabla_usuarios)
         self.vista.tabla_usuarios.cellDoubleClicked.connect(lambda row, col: self.iniciar_edicion_usuario())
+        self.vista.combo_user_rol.activated.connect(self._al_seleccionar_combo_rol)
 
         # Iniciar Carga de Sectores y Usuarios
         self.cargar_sectores_iniciales()
@@ -597,9 +598,53 @@ class ControladorRiego:
     # GESTIÓN DE PERSONAL Y USUARIOS
     # =========================================================================
 
+    def cargar_roles_combo(self):
+        """Carga y actualiza las ocupaciones disponibles en el combo desplegable, permitiendo escribir manual."""
+        roles_set = [
+            "ADMINISTRADOR", "AGRONOMO", "OPERADOR", "TECNICO_IOT", "VISUALIZADOR",
+            "AUDITOR_CALIDAD", "SUPERVISOR_RIEGO", "BOTANICO", "TECNICO_MANTENIMIENTO", "INVESTIGADOR"
+        ]
+        try:
+            roles_bd = self.modelo.obtener_roles()
+            for r in roles_bd:
+                n = str(r.get("nombre_rol", "")).strip().upper()
+                if n and n not in roles_set:
+                    roles_set.append(n)
+        except Exception:
+            pass
+
+        for u in getattr(self, "usuarios_cache", []):
+            rol_u = str(u.get("rol", "")).strip().upper()
+            if rol_u and rol_u not in roles_set:
+                roles_set.append(rol_u)
+
+        texto_actual = self.vista.combo_user_rol.currentText().strip()
+
+        self.vista.combo_user_rol.blockSignals(True)
+        self.vista.combo_user_rol.clear()
+        for r in roles_set:
+            self.vista.combo_user_rol.addItem(r)
+        self.vista.combo_user_rol.addItem("➕ Escribir ocupación manual...")
+
+        if texto_actual and not (texto_actual.startswith("➕") or "manual" in texto_actual.lower()):
+            self.vista.combo_user_rol.setEditText(texto_actual)
+        else:
+            self.vista.combo_user_rol.setCurrentIndex(0)
+        self.vista.combo_user_rol.blockSignals(False)
+
+    def _al_seleccionar_combo_rol(self, index: int):
+        """Si el usuario elige 'Escribir ocupación manual...', limpia el texto y enfoca el cursor para escribir."""
+        texto = self.vista.combo_user_rol.itemText(index)
+        if "escribir" in texto.lower() or "manual" in texto.lower() or texto.startswith("➕"):
+            self.vista.combo_user_rol.setEditText("")
+            if self.vista.combo_user_rol.lineEdit():
+                self.vista.combo_user_rol.lineEdit().setFocus()
+                self.vista.combo_user_rol.lineEdit().setPlaceholderText("Escribe la ocupación aquí...")
+
     def cargar_tabla_usuarios(self):
         """Obtiene la lista de usuarios de la API y puebla la tabla con selección individual exclusiva."""
         self.usuarios_cache = self.modelo.obtener_usuarios()
+        self.cargar_roles_combo()
         self.vista.tabla_usuarios.setRowCount(0)
         for fila_idx, u in enumerate(self.usuarios_cache):
             self.vista.tabla_usuarios.insertRow(fila_idx)
@@ -674,7 +719,7 @@ class ControladorRiego:
         self.vista.txt_user_correo.setPlaceholderText("Correo (Opcional - dejar igual)")
         self.vista.txt_user_pass.clear()
         self.vista.txt_user_pass.setPlaceholderText("Contraseña (Opcional - dejar vacía para conservar)")
-        self.vista.combo_user_rol.setCurrentText(user.get("rol", "OPERADOR"))
+        self.vista.combo_user_rol.setEditText(user.get("rol", "OPERADOR"))
         self.vista.btn_guardar_usuario.setText("💾  Guardar Cambios")
         self.vista.btn_cancelar_edicion.setVisible(True)
         self.vista.lbl_estado_usuarios.setText(f"ℹ️ Editando a '{user.get('nombre')}'. Modifica los datos y presiona Guardar Cambios.")
@@ -691,6 +736,7 @@ class ControladorRiego:
         self.vista.txt_user_correo.setPlaceholderText("Correo electrónico")
         self.vista.txt_user_pass.clear()
         self.vista.txt_user_pass.setPlaceholderText("Contraseña")
+        self.vista.combo_user_rol.setCurrentIndex(0)
         self.vista.btn_guardar_usuario.setText("💾  Registrar")
         self.vista.btn_cancelar_edicion.setVisible(False)
         self.vista.lbl_estado_usuarios.setText("")
@@ -700,7 +746,12 @@ class ControladorRiego:
         nom = self.vista.txt_user_nombre.text().strip()
         cor = self.vista.txt_user_correo.text().strip()
         pas = self.vista.txt_user_pass.text().strip()
-        rol = self.vista.combo_user_rol.currentText()
+        rol = self.vista.combo_user_rol.currentText().strip()
+
+        if not rol or rol.startswith("➕") or "manual" in rol.lower() or "escribir" in rol.lower():
+            QMessageBox.warning(self.vista, "Ocupación Requerida", "⚠️ Por favor escribe o selecciona la ocupación o rol del usuario.")
+            return
+        rol = rol.upper()
 
         # MODO EDICIÓN
         if self.id_usuario_editando is not None:
