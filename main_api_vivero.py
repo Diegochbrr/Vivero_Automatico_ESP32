@@ -157,6 +157,10 @@ class DatabaseManager:
             dbname = os.getenv("DB_NAME", "neondb")
             self.connection_url = f"postgresql://{user}:{password}@{host}:{port}/{dbname}?sslmode=require"
 
+        if "connect_timeout" not in self.connection_url:
+            separator = "&" if "?" in self.connection_url else "?"
+            self.connection_url += f"{separator}connect_timeout=10"
+
         self.pool = pool.ThreadedConnectionPool(
             minconn=1,
             maxconn=10,
@@ -166,18 +170,38 @@ class DatabaseManager:
 
     @contextmanager
     def get_connection(self):
-        """Context manager que presta una conexión del pool y la devuelve al terminar."""
+        """Context manager que presta una conexión del pool y la devuelve al terminar limpiamente."""
         conn = None
         try:
             conn = self.pool.getconn()
+            if conn.closed:
+                conn = self.pool._getconn()
             yield conn
+        except HTTPException:
+            if conn:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+            raise
         except Exception as e:
+            if conn:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Error en base de datos Neon PostgreSQL: {str(e)}"
             )
         finally:
             if conn:
+                try:
+                    # Garantizar que ninguna conexión quede en estado 'idle in transaction' bloqueando Neon
+                    if not conn.closed and conn.get_transaction_status() != psycopg2.extensions.TRANSACTION_STATUS_IDLE:
+                        conn.rollback()
+                except Exception:
+                    pass
                 self.pool.putconn(conn)
 
 
@@ -185,9 +209,8 @@ class ViveroRepository:
     """Repositorio con operaciones CRUD sobre las entidades del Vivero."""
     def __init__(self, db_manager: DatabaseManager):
         self.db_manager = db_manager
-        self.init_db()
 
-    def init_db(self):
+    def init_db(self, force_seed: bool = False):
         """Inicializa las tablas necesarias e inserta datos semilla si no existen."""
         try:
             with self.db_manager.get_connection() as conn:
@@ -200,24 +223,6 @@ class ViveroRepository:
                             descripcion TEXT
                         );
                     """)
-                    roles_iniciales = [
-                        ('ADMINISTRADOR', 'Acceso total al sistema, configuración y gestión de personal'),
-                        ('AGRONOMO', 'Supervisión de cultivos y calibración de umbrales agronómicos'),
-                        ('OPERADOR', 'Operación de riego y supervisión en campo'),
-                        ('TECNICO_IOT', 'Mantenimiento de nodos sensores y actuadores ESP32'),
-                        ('VISUALIZADOR', 'Monitoreo en tiempo real y solo lectura'),
-                        ('AUDITOR_CALIDAD', 'Auditoría de parámetros ambientales y trazabilidad del cultivo'),
-                        ('SUPERVISOR_RIEGO', 'Monitoreo hidráulico de electroválvulas y bombas principales'),
-                        ('BOTANICO', 'Especialista en botánica, nutrición vegetal y fitosanidad'),
-                        ('TECNICO_MANTENIMIENTO', 'Mantenimiento preventivo electromecánico e hidráulico'),
-                        ('INVESTIGADOR', 'Ensayos agronómicos, microclimas y experimentación'),
-                    ]
-                    for nom_r, desc_r in roles_iniciales:
-                        cur.execute("""
-                            INSERT INTO roles (nombre_rol, descripcion)
-                            VALUES (%s, %s)
-                            ON CONFLICT (nombre_rol) DO UPDATE SET descripcion = EXCLUDED.descripcion;
-                        """, (nom_r, desc_r))
 
                     # 2. Tabla Usuarios con Llave Foránea id_rol
                     cur.execute("""
@@ -257,7 +262,93 @@ class ViveroRepository:
                         );
                     """)
 
-                    # 4. Semilla de Usuarios (10 Usuarios con Hash SHA-256)
+                    # 4. Tabla Umbrales de Configuración (10 Sectores)
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS umbrales_configuracion (
+                            id_umbral SERIAL PRIMARY KEY,
+                            id_sector INT UNIQUE REFERENCES sectores(id_sector) ON DELETE CASCADE,
+                            humedad_min_on NUMERIC(5,2) NOT NULL,
+                            humedad_max_off NUMERIC(5,2) NOT NULL,
+                            tiempo_max_riego_seg INT NOT NULL,
+                            id_usuario_modifica INT REFERENCES usuarios(id_usuario),
+                            actualizado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        );
+                    """)
+
+                    # 5. Tabla de Estado y Heartbeat de Dispositivos ESP32 (10 Nodos)
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS estado_dispositivos (
+                            id_dispositivo VARCHAR(50) PRIMARY KEY,
+                            id_sector INT REFERENCES sectores(id_sector) ON DELETE CASCADE,
+                            estado_conexion VARCHAR(20) DEFAULT 'EN_LINEA',
+                            ip_origen VARCHAR(45) DEFAULT '192.168.1.50',
+                            version_firmware VARCHAR(20) DEFAULT 'v1.0.0',
+                            ultimo_ping TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        );
+                    """)
+
+                    # Tablas de telemetría y eventos
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS lecturas_humedad (
+                            id_lectura SERIAL PRIMARY KEY,
+                            id_sensor VARCHAR(50) NOT NULL,
+                            id_sector INT REFERENCES sectores(id_sector),
+                            humedad_porcentaje NUMERIC(5,2) NOT NULL,
+                            valor_adc_crudo INT NOT NULL,
+                            fecha_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        );
+                    """)
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS eventos_riego (
+                            id_evento SERIAL PRIMARY KEY,
+                            id_actuador VARCHAR(50) NOT NULL,
+                            id_sector INT REFERENCES sectores(id_sector),
+                            duracion_segundos INT NOT NULL,
+                            volumen_litros_estimado NUMERIC(6,2) NOT NULL,
+                            motivo VARCHAR(100) DEFAULT 'AUTOMATICO_UMBRAL',
+                            fecha_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        );
+                    """)
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS alertas_nivel_agua (
+                            id_alerta SERIAL PRIMARY KEY,
+                            id_sector INT REFERENCES sectores(id_sector),
+                            nivel_detectado VARCHAR(50) NOT NULL,
+                            bomba_bloqueada BOOLEAN DEFAULT TRUE,
+                            observacion TEXT DEFAULT '',
+                            fecha_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        );
+                    """)
+                    conn.commit()
+
+                    # Verificar si la base de datos ya tiene datos sembrados para evitar queries innecesarias
+                    cur.execute("SELECT COUNT(*) AS cnt FROM usuarios;")
+                    row = cur.fetchone()
+                    if row and row["cnt"] > 0 and not force_seed:
+                        print("[OK] Tablas verificadas. Datos iniciales ya existen en PostgreSQL Neon.")
+                        return
+
+                    # 1. Semilla Roles
+                    roles_iniciales = [
+                        ('ADMINISTRADOR', 'Acceso total al sistema, configuración y gestión de personal'),
+                        ('AGRONOMO', 'Supervisión de cultivos y calibración de umbrales agronómicos'),
+                        ('OPERADOR', 'Operación de riego y supervisión en campo'),
+                        ('TECNICO_IOT', 'Mantenimiento de nodos sensores y actuadores ESP32'),
+                        ('VISUALIZADOR', 'Monitoreo en tiempo real y solo lectura'),
+                        ('AUDITOR_CALIDAD', 'Auditoría de parámetros ambientales y trazabilidad del cultivo'),
+                        ('SUPERVISOR_RIEGO', 'Monitoreo hidráulico de electroválvulas y bombas principales'),
+                        ('BOTANICO', 'Especialista en botánica, nutrición vegetal y fitosanidad'),
+                        ('TECNICO_MANTENIMIENTO', 'Mantenimiento preventivo electromecánico e hidráulico'),
+                        ('INVESTIGADOR', 'Ensayos agronómicos, microclimas y experimentación'),
+                    ]
+                    for nom_r, desc_r in roles_iniciales:
+                        cur.execute("""
+                            INSERT INTO roles (nombre_rol, descripcion)
+                            VALUES (%s, %s)
+                            ON CONFLICT (nombre_rol) DO UPDATE SET descripcion = EXCLUDED.descripcion;
+                        """, (nom_r, desc_r))
+
+                    # 2. Semilla de Usuarios (10 Usuarios con Hash SHA-256)
                     pass_semilla_hash = hash_contrasena('admin123')
                     usuarios_iniciales = [
                         ('Diego Charry', 'diego.charry@vivero.com', pass_semilla_hash, 'ADMINISTRADOR', 1),
@@ -272,20 +363,15 @@ class ViveroRepository:
                         ('Fabian Ortiz', 'fabian.ortiz@vivero.com', pass_semilla_hash, 'INVESTIGADOR', 10),
                     ]
                     for nom, cor, pas, rol, id_r in usuarios_iniciales:
-                        cur.execute("SELECT id_usuario, contrasena_hash FROM usuarios WHERE correo = %s;", (cor,))
-                        row_u = cur.fetchone()
-                        if row_u:
-                            cur.execute("""
-                                UPDATE usuarios SET nombre = %s, contrasena_hash = %s, rol = %s, id_rol = %s, activo = TRUE
-                                WHERE correo = %s;
-                            """, (nom, pas, rol, id_r, cor))
-                        else:
-                            cur.execute("""
-                                INSERT INTO usuarios (nombre, correo, contrasena_hash, rol, id_rol, activo)
-                                VALUES (%s, %s, %s, %s, %s, TRUE);
-                            """, (nom, cor, pas, rol, id_r))
+                        cur.execute("""
+                            INSERT INTO usuarios (nombre, correo, contrasena_hash, rol, id_rol, activo)
+                            VALUES (%s, %s, %s, %s, %s, TRUE)
+                            ON CONFLICT (correo) DO UPDATE 
+                            SET nombre = EXCLUDED.nombre, contrasena_hash = EXCLUDED.contrasena_hash,
+                                rol = EXCLUDED.rol, id_rol = EXCLUDED.id_rol, activo = TRUE;
+                        """, (nom, cor, pas, rol, id_r))
 
-                    # 5. Semilla de Sectores (10 Sectores)
+                    # 3. Semilla de Sectores (10 Sectores)
                     sectores_iniciales = [
                         (1, 'Invernadero 1 (Principal)', 'Diego Charry', 'diego.charry@vivero.com', 'Administrador General', 'Orquídeas y Suculentas', 'Sector de telemetría IoT ESP32 automatizado'),
                         (2, 'Invernadero 2 (Cultivo Agrónomo)', 'Angel Villalobos', 'angel.villalobos@vivero.com', 'Ingeniero Agrónomo', 'Hortalizas y Tomates', 'Monitoreo de suelo y fertilización'),
@@ -299,30 +385,16 @@ class ViveroRepository:
                         (10, 'Invernadero 10 (Germinación Forestal)', 'Fabian Ortiz', 'fabian.ortiz@vivero.com', 'Investigador Agrícola', 'Brotes y Plántulas Nativas', 'Propagación de árboles nativos y reforestación'),
                     ]
                     for id_s, nom_s, enc_n, enc_c, enc_r, cul, des in sectores_iniciales:
-                        cur.execute("SELECT id_sector FROM sectores WHERE id_sector = %s;", (id_s,))
-                        if cur.fetchone():
-                            cur.execute("""
-                                UPDATE sectores SET nombre_sector = %s, encargado_nombre = %s, encargado_correo = %s, encargado_rol = %s, tipo_cultivo = %s, descripcion = %s
-                                WHERE id_sector = %s;
-                            """, (nom_s, enc_n, enc_c, enc_r, cul, des, id_s))
-                        else:
-                            cur.execute("""
-                                INSERT INTO sectores (id_sector, nombre_sector, encargado_nombre, encargado_correo, encargado_rol, tipo_cultivo, descripcion)
-                                VALUES (%s, %s, %s, %s, %s, %s, %s);
-                            """, (id_s, nom_s, enc_n, enc_c, enc_r, cul, des))
+                        cur.execute("""
+                            INSERT INTO sectores (id_sector, nombre_sector, encargado_nombre, encargado_correo, encargado_rol, tipo_cultivo, descripcion)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s)
+                            ON CONFLICT (id_sector) DO UPDATE
+                            SET nombre_sector = EXCLUDED.nombre_sector, encargado_nombre = EXCLUDED.encargado_nombre,
+                                encargado_correo = EXCLUDED.encargado_correo, encargado_rol = EXCLUDED.encargado_rol,
+                                tipo_cultivo = EXCLUDED.tipo_cultivo, descripcion = EXCLUDED.descripcion;
+                        """, (id_s, nom_s, enc_n, enc_c, enc_r, cul, des))
 
-                    # 6. Tabla Umbrales de Configuración (10 Sectores)
-                    cur.execute("""
-                        CREATE TABLE IF NOT EXISTS umbrales_configuracion (
-                            id_umbral SERIAL PRIMARY KEY,
-                            id_sector INT UNIQUE REFERENCES sectores(id_sector) ON DELETE CASCADE,
-                            humedad_min_on NUMERIC(5,2) NOT NULL,
-                            humedad_max_off NUMERIC(5,2) NOT NULL,
-                            tiempo_max_riego_seg INT NOT NULL,
-                            id_usuario_modifica INT REFERENCES usuarios(id_usuario),
-                            actualizado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                        );
-                    """)
+                    # 4. Tabla Umbrales de Configuración (10 Sectores)
                     umbrales_iniciales = [
                         (1, 35.0, 70.0, 180, 1),
                         (2, 40.0, 75.0, 150, 2),
@@ -336,24 +408,13 @@ class ViveroRepository:
                         (10, 50.0, 70.0, 120, 1),
                     ]
                     for id_s, h_min, h_max, t_max, id_u in umbrales_iniciales:
-                        cur.execute("SELECT id_sector FROM umbrales_configuracion WHERE id_sector = %s;", (id_s,))
-                        if not cur.fetchone():
-                            cur.execute("""
-                                INSERT INTO umbrales_configuracion (id_sector, humedad_min_on, humedad_max_off, tiempo_max_riego_seg, id_usuario_modifica)
-                                VALUES (%s, %s, %s, %s, %s);
-                            """, (id_s, h_min, h_max, t_max, id_u))
+                        cur.execute("""
+                            INSERT INTO umbrales_configuracion (id_sector, humedad_min_on, humedad_max_off, tiempo_max_riego_seg, id_usuario_modifica)
+                            VALUES (%s, %s, %s, %s, %s)
+                            ON CONFLICT (id_sector) DO NOTHING;
+                        """, (id_s, h_min, h_max, t_max, id_u))
 
-                    # 7. Tabla de Estado y Heartbeat de Dispositivos ESP32 (10 Nodos)
-                    cur.execute("""
-                        CREATE TABLE IF NOT EXISTS estado_dispositivos (
-                            id_dispositivo VARCHAR(50) PRIMARY KEY,
-                            id_sector INT REFERENCES sectores(id_sector) ON DELETE CASCADE,
-                            estado_conexion VARCHAR(20) DEFAULT 'EN_LINEA',
-                            ip_origen VARCHAR(45) DEFAULT '192.168.1.50',
-                            version_firmware VARCHAR(20) DEFAULT 'v1.0.0',
-                            ultimo_ping TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                        );
-                    """)
+                    # 5. Estado y Heartbeat de Dispositivos ESP32 (10 Nodos)
                     dispositivos_semilla = [
                         ('ESP32-S01-PRINCIPAL', 1, 'EN_LINEA', '192.168.1.50', 'v1.0.0'),
                         ('ESP32-S02-AGRONOMO', 2, 'EN_LINEA', '192.168.1.51', 'v1.0.0'),
@@ -773,6 +834,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.on_event("startup")
+def startup_event():
+    print("[INFO] Verificando e inicializando tablas en Neon PostgreSQL...")
+    repository.init_db()
+
 # Endpoint Raíz y Diagnóstico (Soporta GET y HEAD para Render health checks)
 @app.api_route("/", methods=["GET", "HEAD"], tags=["Salud y Diagnóstico"])
 def root():
@@ -1022,4 +1088,10 @@ async def webhook_twilio(
 
 
 if __name__ == "__main__":
-    uvicorn.run("main_api_vivero:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run(
+        "main_api_vivero:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=True,
+        reload_excludes=["env", "env/*", ".*", "*.log"]
+    )

@@ -34,3 +34,5 @@ yarn-debug.log*
 *.swo
 .DS_Store
 Thumbs.db
+scratch/
+
