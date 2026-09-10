@@ -92,6 +92,7 @@ void  setupSinricPro();
 void  fijarBomba(bool activar);
 float leerHumedad(int &rawOut);
 void  actualizarLcd();
+void  recuperarLcd();
 void  procesarRiegoAutomatico();
 void  consultarConfigYComandos();
 void  enviarTelemetriaApi(float humedad, int rawAdc);
@@ -132,6 +133,7 @@ void setup() {
 
     // 1. Inicializar pantalla LCD I2C en pines SDA=22, SCL=21
     Wire.begin(22, 21);
+    Wire.setClock(100000); // 100 kHz estándar: máxima inmunidad frente a ruido electromagnético
     delay(100);
     lcd.init();
     lcd.backlight();
@@ -198,13 +200,21 @@ void loop() {
 // CONTROL SEGURO DE LA BOMBA (ALTA IMPEDANCIA Hi-Z)
 // ══════════════════════════════════════════════════════════════════════════
 void fijarBomba(bool activar) {
+    if (bomba_activa == activar) return;
     bomba_activa = activar;
+
     if (activar) {
         pinMode(PIN_RELE_BOMBA, OUTPUT);
         digitalWrite(PIN_RELE_BOMBA, LOW);   // Activa relé (conduce a GND)
     } else {
         pinMode(PIN_RELE_BOMBA, INPUT);      // Desconecta pin (flotante / apaga 100%)
     }
+
+    // Pausa breve para amortiguar el pico inductivo/chispazo del motor
+    delay(50);
+
+    // Auto-recuperación de pantalla: reinicializa registros I2C si hubo ruido
+    recuperarLcd();
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -241,9 +251,27 @@ void procesarRiegoAutomatico() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// PANTALLA LCD 16x2
+// AUTO-RECUPERACIÓN Y DESPLIEGUE EN PANTALLA LCD 16x2
 // ══════════════════════════════════════════════════════════════════════════
+void recuperarLcd() {
+    Wire.begin(22, 21);
+    Wire.setClock(100000);
+    lcd.init();
+    lcd.backlight();
+    actualizarLcd();
+}
+
 void actualizarLcd() {
+    // Comprobar si el bus I2C está respondiendo
+    Wire.beginTransmission(0x27);
+    if (Wire.endTransmission() != 0) {
+        // Si el controlador PCF8574 se bloqueó por ruido, restaurarlo
+        Wire.begin(22, 21);
+        Wire.setClock(100000);
+        lcd.init();
+        lcd.backlight();
+    }
+
     // Fila 0: Sector y porcentaje de humedad
     char fila0[17];
     snprintf(fila0, sizeof(fila0), "S%d Hum:%5.1f%%  ", ID_SECTOR, humedadActual);
