@@ -12,7 +12,7 @@ from datetime import datetime
 from contextlib import contextmanager
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
-from fastapi import FastAPI, HTTPException, status, Security, Depends
+from fastapi import FastAPI, HTTPException, status, Security, Depends, Form, BackgroundTasks, Request, Response
 from fastapi.security.api_key import APIKeyHeader
 import psycopg2
 from psycopg2 import pool
@@ -943,6 +943,82 @@ def eliminar_usuario(id_usuario: int):
 @app.post("/api/v1/auth/login", tags=["Usuarios & Roles"])
 def iniciar_sesion(credenciales: LoginRequest):
     return repository.authenticate_user(credenciales.correo, credenciales.contrasena)
+
+
+# =============================================================================
+# INTEGRACIÓN WHATSAPP BOT CON OLLAMA Y TWILIO
+# =============================================================================
+TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "")
+TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "")
+TWILIO_WHATSAPP_NUMBER = os.getenv("TWILIO_WHATSAPP_NUMBER", "whatsapp:+14155238886")
+
+def enviar_whatsapp_twilio(numero_destino: str, texto_respuesta: str):
+    """Envía el mensaje de vuelta al usuario por WhatsApp usando Twilio."""
+    if not TWILIO_ACCOUNT_SID or not TWILIO_AUTH_TOKEN:
+        print("[Twilio] Credenciales TWILIO_ACCOUNT_SID o TWILIO_AUTH_TOKEN no configuradas en .env")
+        return
+    try:
+        # pyrefly: ignore [missing-import]
+        from twilio.rest import Client
+        twilio_client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+        mensaje = twilio_client.messages.create(
+            from_=TWILIO_WHATSAPP_NUMBER,
+            to=numero_destino,
+            body=texto_respuesta
+        )
+        print(f"[Twilio] Mensaje enviado a {numero_destino}. SID: {mensaje.sid}")
+    except Exception as e:
+        print(f"[Twilio] Error al enviar mensaje: {e}")
+
+def tarea_segundo_plano_ollama(numero_usuario: str, pregunta_texto: str):
+    """Ejecuta Ollama con las consultas a la BD y envía la respuesta por WhatsApp."""
+    try:
+        from agente_ollama import procesar_con_ollama
+        print(f"[Ollama] Procesando pregunta de {numero_usuario}: '{pregunta_texto}'")
+        return procesar_con_ollama(pregunta_texto)
+    except Exception as e:
+        print(f"[Ollama Error]: {e}")
+        return "Disculpa, ocurrió un error temporal al consultar el sistema del vivero."
+
+@app.post("/webhook/twilio", tags=["WhatsApp Twilio"])
+@app.post("/", tags=["WhatsApp Twilio"])
+async def webhook_twilio(
+    From: str = Form(None),
+    Body: str = Form(None),
+    request: Request = None
+):
+    """
+    Recibe los mensajes de WhatsApp de Twilio y responde directamente con TwiML.
+    Al usar TwiML, Twilio entrega la respuesta inmediatamente en el Sandbox sin restricciones de Trial.
+    """
+    form_data = await request.form() if request else {}
+    from_user = From or form_data.get("From", "Usuario")
+    body_text = Body or form_data.get("Body", "")
+    
+    print(f"\n[Twilio Webhook] 📩 Mensaje entrante de {from_user}: '{body_text}'")
+    from agente_ollama import procesar_con_ollama
+    from html import escape
+    
+    try:
+        # Generar la respuesta con Ollama y la base de datos viva
+        respuesta_texto = procesar_con_ollama(body_text, user_id=from_user) if body_text else "Hola, ¿en qué puedo ayudarte en el vivero?"
+    except Exception as e:
+        print(f"[Ollama Error]: {e}")
+        respuesta_texto = "Hola, ocurrió un inconveniente consultando el vivero. Por favor intenta de nuevo."
+
+    print(f"[Ollama] 🤖 Enviando respuesta por TwiML: {respuesta_texto}")
+
+    # TwiML entrega el mensaje directamente en el hilo de chat de WhatsApp
+    twiml_xml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Message>{escape(respuesta_texto)}</Message>
+</Response>"""
+    
+    return Response(
+        content=twiml_xml.strip(),
+        media_type="application/xml",
+        headers={"Content-Type": "application/xml; charset=utf-8"}
+    )
 
 
 if __name__ == "__main__":

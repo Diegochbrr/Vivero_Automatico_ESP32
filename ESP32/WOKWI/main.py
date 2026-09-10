@@ -15,13 +15,9 @@ PIN_LED_ALERTA      = 4
 ssid = "Wokwi-GUEST"
 password = ""
 
-API_BASE           = "https://vivero-automatico-esp32.onrender.com/api/v1"
-api_mediciones_url = API_BASE + "/mediciones"
-api_alertas_url    = API_BASE + "/alertas"
-api_comandos_url   = API_BASE + "/comandos/1"          # polling: umbral + forzar riego
-api_ack_riego_url  = API_BASE + "/comandos/forzar-riego/1"  # DELETE para confirmar
-api_key            = "sv_live_8b3a7f9d2e1c4a5b6f8e7d9c0b1a2f3d"
-ID_SECTOR          = 1
+API_BASE = "https://plus-clavicle-impending.ngrok-free.dev/api/v1"
+api_key  = "sv_live_8b3a7f9d2e1c4a5b6f8e7d9c0b1a2f3d"
+ID_SECTOR = 4
 
 # Umbrales con valores por defecto (se sobreescriben al conectar a la API)
 HUM_MIN_ON  = 35.0   # encender bomba si humedad < este valor
@@ -75,20 +71,21 @@ def consultar_config_y_comandos():
     """
     global HUM_MIN_ON, HUM_MAX_OFF, TIEMPO_MAX_RIEGO_SEG, ID_SECTOR
     
-    # 1. Sincronizar Sector Activo
-    try:
-        r_sec = urequests.get(API_BASE + "/sistema/sector-activo", headers=HEADERS, timeout=4)
-        if r_sec.status_code == 200:
-            d_sec = ujson.loads(r_sec.text)
-            nuevo_sec = int(d_sec.get("sector_activo", ID_SECTOR))
-            if nuevo_sec != ID_SECTOR:
-                ID_SECTOR = nuevo_sec
-                print("🔄 [Sector] ESP32 sincronizado a Sector {}".format(ID_SECTOR))
-            r_sec.close()
-        else:
-            r_sec.close()
-    except Exception as e:
-        print("⚠️ Error consultando sector activo:", e)
+    # 1. Sincronizar Sector Activo (opcional, solo si no se fijó manualmente en el código)
+    # Si quieres que el ESP32 siga a la app de escritorio, descomenta esto:
+    # try:
+    #     r_sec = urequests.get(API_BASE + "/sistema/sector-activo", headers=HEADERS, timeout=4)
+    #     if r_sec.status_code == 200:
+    #         d_sec = ujson.loads(r_sec.text)
+    #         nuevo_sec = int(d_sec.get("sector_activo", ID_SECTOR))
+    #         if nuevo_sec != ID_SECTOR:
+    #             ID_SECTOR = nuevo_sec
+    #             print("🔄 [Sector] ESP32 sincronizado a Sector {}".format(ID_SECTOR))
+    #         r_sec.close()
+    #     else:
+    #         r_sec.close()
+    # except Exception as e:
+    #     print("⚠️ Error consultando sector activo:", e)
 
     # 2. Consultar Umbrales y Comandos del sector activo
     try:
@@ -121,39 +118,47 @@ def confirmar_riego_forzado():
         print("⚠️ Error confirmando riego forzado:", e)
 
 
+alerta_enviada_previa = False
+
 def enviar_datos_api(humedad, adc_crudo, nivel_agua_ok):
+    global alerta_enviada_previa
     if not wlan.isconnected():
         print("WiFi desconectado")
         return
 
-    # 1. Telemetría de humedad
+    # 1. Telemetría de humedad al sector actual
     payload = {
-        "id_sensor": "SEN-CAP-S01",
+        "id_sensor": "SEN-CAP-S{:02d}".format(ID_SECTOR),
         "id_sector": ID_SECTOR,
         "humedad_porcentaje": round(humedad, 2),
         "valor_adc_crudo": adc_crudo
     }
     try:
-        response = urequests.post(api_mediciones_url, headers=HEADERS, json=payload, timeout=5)
-        print("HTTP Mediciones:", response.status_code)
+        url_med = "{}/mediciones".format(API_BASE)
+        response = urequests.post(url_med, headers=HEADERS, json=payload, timeout=5)
+        print("HTTP Mediciones S{}:".format(ID_SECTOR), response.status_code)
         response.close()
     except Exception as e:
         print("Error HTTP Mediciones:", e)
 
-    # 2. Alerta crítica de falta de agua
-    if not nivel_agua_ok:
+    # 2. Alerta crítica de falta de agua (solo enviar si cambia el estado o aún no se ha notificado)
+    if not nivel_agua_ok and not alerta_enviada_previa:
         alerta_payload = {
             "id_sector": ID_SECTOR,
             "nivel_detectado": "CRITICO_VACIO",
             "bomba_bloqueada": True,
-            "observacion": "Alerta de nivel de agua detectada por ESP32"
+            "observacion": "Alerta de nivel de agua detectada por ESP32 en Sector {}".format(ID_SECTOR)
         }
         try:
-            res_alerta = urequests.post(api_alertas_url, headers=HEADERS, json=alerta_payload, timeout=5)
+            url_alt = "{}/alertas".format(API_BASE)
+            res_alerta = urequests.post(url_alt, headers=HEADERS, json=alerta_payload, timeout=5)
             print("HTTP Alerta Nivel:", res_alerta.status_code)
             res_alerta.close()
+            alerta_enviada_previa = True
         except Exception as e:
             print("Error HTTP Alerta:", e)
+    elif nivel_agua_ok:
+        alerta_enviada_previa = False
 
 
 # ── Loop principal ────────────────────────────────────────────────────────────
