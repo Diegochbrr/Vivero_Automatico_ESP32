@@ -74,20 +74,38 @@ lcd = I2cLcd(i2c, DEFAULT_I2C_ADDR, 2, 16)
 lcd.clear()
 lcd.putstr("VIVERO AUTO\nConectando WiFi")
 
-# 6. CONEXIÓN WI-FI
+# 6. CONEXIÓN WI-FI ROBUSTA
 wlan = network.WLAN(network.STA_IF)
-wlan.active(True)
-print("Conectando a WiFi:", WIFI_SSID)
-wlan.connect(WIFI_SSID, WIFI_PASSWORD)
 
-intentos = 0
-while not wlan.isconnected() and intentos < 25:
-    time.sleep(0.4)
-    print(".", end="")
-    intentos += 1
+def conectar_wifi():
+    if wlan.isconnected():
+        return True
+    
+    # Reiniciar la interfaz para limpiar estados previos colgados
+    print("Inicializando WiFi...")
+    wlan.active(False)
+    time.sleep(0.2)
+    wlan.active(True)
+    time.sleep(0.3)
+    
+    print("Conectando a WiFi:", WIFI_SSID)
+    try:
+        wlan.connect(WIFI_SSID, WIFI_PASSWORD)
+    except OSError as e:
+        print("Aviso WiFi:", e)
+        
+    intentos = 0
+    while not wlan.isconnected() and intentos < 25:
+        time.sleep(0.4)
+        print(".", end="")
+        intentos += 1
+        
+    return wlan.isconnected()
+
+conectado = conectar_wifi()
 
 lcd.clear()
-if wlan.isconnected():
+if conectado:
     ip = wlan.ifconfig()[0]
     print("\n[WiFi] Conectado! IP:", ip)
     lcd.putstr("WiFi Conectado!\nIP: " + ip[:12])

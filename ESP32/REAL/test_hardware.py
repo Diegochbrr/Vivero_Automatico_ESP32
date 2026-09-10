@@ -60,13 +60,17 @@ while True:
         time.sleep_ms(10)
     raw_adc = suma // 15
 
-    print("ADC Raw:", raw_adc)
+    # Cálculo de voltaje real aproximado (0.00V a 3.30V)
+    voltaje = (raw_adc / 4095) * 3.3
+
+    print("ADC Raw: {:<4} | Voltaje: {:.2f} V".format(raw_adc, voltaje))
 
     # Actualizar pantalla LCD
     lcd.move_to(0, 0)
-    lcd.putstr("ADC Raw: {:<6}".format(raw_adc))
+    lcd.putstr("ADC:{:<5} P:{}".format(raw_adc, PIN_SENSOR_HUMEDAD))
 
     lcd.move_to(0, 1)
-    lcd.putstr("Bomba: APAGADA  ")
+    lcd.putstr("Voltaje: {:.2f}V ".format(voltaje))
 
     time.sleep_ms(400)
+
