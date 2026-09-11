@@ -7,7 +7,9 @@
 [![MicroPython](https://img.shields.io/badge/MicroPython-ESP32-darkgreen?logo=espressif&logoColor=white)](https://micropython.org/)
 [![Render](https://img.shields.io/badge/Render-Deployed-46E3B7?logo=render&logoColor=white)](https://vivero-automatico-esp32.onrender.com)
 
-**SmartVivero IoT** es una solución integral y profesional de agricultura de precisión desarrollada por el **GRUPO 3**. El sistema automatiza el monitoreo de humedad de suelo, el control de reservorios de agua y la activación de bombas de riego en tiempo real, integrando nodos IoT (**ESP32 / Wokwi**), un backend en la nube (**FastAPI + Neon PostgreSQL**) y un panel de control de escritorio (**PyQt6**) con control de acceso basado en roles (RBAC) y generación de informes técnicos oficiales en PDF.
+**SmartVivero IoT** es una solución integral y profesional de agricultura de precisión desarrollada por el **GRUPO 3**. El sistema automatiza el monitoreo de humedad de suelo, el control de reservorios de agua y la activación de bombas de riego en tiempo real, integrando nodos IoT (**ESP32 / Wokwi**), un backend en la nube (**FastAPI + Neon PostgreSQL**), un panel de control de escritorio (**PyQt6**) y un **Asistente Virtual por WhatsApp (Twilio + Ollama Llama 3.2)** con consulta en vivo a la base de datos.
+
+> 📖 **Nueva documentación:** Consulta la [Guía de Integración Twilio WhatsApp & Agente IA](DOCS_TWILIO_WHATSAPP.md) para el funcionamiento detallado del bot.
 
 ---
 
