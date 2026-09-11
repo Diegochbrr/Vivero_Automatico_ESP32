@@ -39,6 +39,7 @@
 #include <gravity_soil_moisture_sensor.h>
 #include "SinricPro.h"
 #include "SinricProSwitch.h"
+#include "SinricProTemperaturesensor.h"
 
 // ─── 1. CREDENCIALES WI-FI ────────────────────────────────────────────────
 const char* WIFI_SSID     = "iPhone";
@@ -47,7 +48,8 @@ const char* WIFI_PASSWORD = "Diego123";
 // ─── 2. CREDENCIALES SINRICPRO (GOOGLE HOME) ──────────────────────────────
 #define APP_KEY           "087703d1-88c1-4f45-a7c9-8d3624596c24"
 #define APP_SECRET        "39d2a459-a77e-4c42-bee8-df86ea20f0fa-c43024d7-0fe9-4637-8684-ae3d9e6992bc"
-#define SWITCH_ID_1       "6aa2184ab3889c3a11adc017"
+#define SWITCH_ID_1       "6aa2184ab3889c3a11adc017"  // Relé de la Bomba (ON/OFF)
+#define SENSOR_HUMEDAD_ID "6aa311f4b597c4e123424565"  // Sensor Humedad Vivero (Humedad y Temperatura)
 
 // ─── 3. CREDENCIALES API REST BACKEND ─────────────────────────────────────
 const char* API_BASE = "https://vivero-automatico-esp32.onrender.com/api/v1";
@@ -93,6 +95,7 @@ void  fijarBomba(bool activar);
 float leerHumedad(int &rawOut);
 void  actualizarLcd();
 void  recuperarLcd();
+void  actualizarSinricProSensor(float humedad);
 void  procesarRiegoAutomatico();
 void  consultarConfigYComandos();
 void  enviarTelemetriaApi(float humedad, int rawAdc);
@@ -185,6 +188,7 @@ void loop() {
 
         procesarRiegoAutomatico();
         actualizarLcd();
+        actualizarSinricProSensor(humedadActual);
     }
 
     // Ciclo 2: Telemetría y sincronización con API REST (cada 5 seg)
@@ -338,8 +342,12 @@ void setupWiFi() {
 // INICIALIZACIÓN SINRICPRO (GOOGLE HOME)
 // ══════════════════════════════════════════════════════════════════════════
 void setupSinricPro() {
+    // 1. Actuador: Bomba de agua (Switch ON/OFF)
     SinricProSwitch& mySwitch1 = SinricPro[SWITCH_ID_1];
     mySwitch1.onPowerState(onPowerState1);
+
+    // 2. Sensor: Humedad y Temperatura para Google Home
+    SinricProTemperaturesensor &mySensor = SinricPro[SENSOR_HUMEDAD_ID];
 
     SinricPro.onConnected([](){ 
         Serial.println("[SinricPro]: Conectado a la nube de Google Home!"); 
@@ -350,6 +358,32 @@ void setupSinricPro() {
 
     SinricPro.begin(APP_KEY, APP_SECRET);
     SinricPro.restoreDeviceStates(true);
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// ENVÍO DE HUMEDAD EN VIVO A GOOGLE HOME / SINRICPRO
+// ══════════════════════════════════════════════════════════════════════════
+unsigned long ultimoEnvioSinric = 0;
+float ultimaHumedadSinric = -100.0f;
+
+void actualizarSinricProSensor(float humedad) {
+    if (!SinricPro.isConnected()) return;
+
+    unsigned long ahora = millis();
+    // Enviar periódicamente (cada 30 seg) o si hay variación relevante (>= 2%)
+    bool tiempoCumplido = (ahora - ultimoEnvioSinric >= 30000UL);
+    bool cambioGrande   = (fabs(humedad - ultimaHumedadSinric) >= 2.0f && (ahora - ultimoEnvioSinric >= 10000UL));
+
+    if (tiempoCumplido || cambioGrande || ultimaHumedadSinric < 0) {
+        ultimoEnvioSinric = ahora;
+        ultimaHumedadSinric = humedad;
+
+        SinricProTemperaturesensor &mySensor = SinricPro[SENSOR_HUMEDAD_ID];
+        bool enviado = mySensor.sendTemperatureEvent(24.0f, humedad);
+        if (enviado) {
+            Serial.printf("[Google Home]: Humedad reportada a Google -> %.1f%%\r\n", humedad);
+        }
+    }
 }
 
 // ══════════════════════════════════════════════════════════════════════════
