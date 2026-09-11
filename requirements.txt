@@ -8,3 +8,5 @@ python-dotenv>=1.0.0
 requests>=2.31.0
 PyQt6>=6.5.0
 matplotlib>=3.7.0
+ollama>=0.6.0
+twilio>=9.0.0
