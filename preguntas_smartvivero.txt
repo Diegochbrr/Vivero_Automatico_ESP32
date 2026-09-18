@@ -1,0 +1,114 @@
+================================================================================
+PREGUNTAS ESPECÍFICAS Y CÓDIGO SQL PARA EL EDITOR DE NEON (POSTGRESQL)
+Sistema de Monitoreo y Riego Automatizado - SmartVivero IoT
+================================================================================
+
+-- =============================================================================
+-- PREGUNTA 1: TELEMETRÍA DE HUMEDAD Y VALOR ADC EN TIEMPO REAL
+-- Texto para el bot:
+-- "¿Cuál es la humedad actual y el valor ADC crudo del sensor en el Sector 2 de Tomates, y está dentro de su rango óptimo?"
+-- =============================================================================
+SELECT 
+    s.id_sector,
+    s.nombre_sector,
+    s.tipo_cultivo,
+    COALESCE(l.humedad_porcentaje, 0.0) AS humedad_actual,
+    COALESCE(l.valor_adc_crudo, 0) AS adc_crudo,
+    l.fecha_hora AS fecha_ultima_lectura,
+    COALESCE(u.humedad_min_on, 40.0) AS hum_min_riego_on,
+    COALESCE(u.humedad_max_off, 75.0) AS hum_max_corte_off,
+    CASE 
+        WHEN COALESCE(l.humedad_porcentaje, 0.0) < COALESCE(u.humedad_min_on, 40.0) THEN 'REQUIERE RIEGO INMEDIATO'
+        WHEN COALESCE(l.humedad_porcentaje, 0.0) > COALESCE(u.humedad_max_off, 75.0) THEN 'HUMEDAD ALTA / SUELO SATURADO'
+        ELSE 'RANGO ÓPTIMO'
+    END AS diagnostico_riego
+FROM sectores s
+LEFT JOIN LATERAL (
+    SELECT humedad_porcentaje, valor_adc_crudo, fecha_hora
+    FROM lecturas_humedad
+    WHERE id_sector = s.id_sector
+    ORDER BY fecha_hora DESC 
+    LIMIT 1
+) l ON true
+LEFT JOIN umbrales_configuracion u ON u.id_sector = s.id_sector
+WHERE s.id_sector = 2;
+
+
+
+-- =============================================================================
+-- PREGUNTA 2: HISTORIAL DE RIEGOS Y CONSUMO DE AGUA
+-- Texto para el bot:
+-- "¿Cuándo se ejecutó el último riego, cuántos litros de agua se consumieron y durante cuántos segundos estuvo encendida la bomba?"
+-- =============================================================================
+SELECT 
+    s.nombre_sector,
+    r.duracion_segundos,
+    r.volumen_litros_estimado,
+    r.motivo,
+    r.fecha_inicio,
+    r.fecha_fin
+FROM eventos_riego r
+JOIN sectores s ON r.id_sector = s.id_sector
+ORDER BY r.fecha_inicio DESC 
+LIMIT 1;
+
+
+
+-- =============================================================================
+-- PREGUNTA 3: SEGURIDAD HIDRÁULICA Y ALERTA DE NIVEL DE AGUA
+-- Texto para el bot:
+-- "¿El tanque principal tiene agua suficiente o hay alguna alerta activa de boya con la bomba bloqueada por trabajo en seco?"
+-- =============================================================================
+SELECT 
+    s.nombre_sector,
+    a.nivel_detectado,
+    CASE 
+        WHEN a.bomba_bloqueada THEN 'BOMBA BLOQUEADA POR SEGURIDAD'
+        ELSE 'BOMBA OPERATIVA / HABILITADA'
+    END AS estado_bomba,
+    a.observacion,
+    a.fecha_hora
+FROM alertas_nivel_agua a
+JOIN sectores s ON a.id_sector = s.id_sector
+ORDER BY a.fecha_hora DESC 
+LIMIT 1;
+
+
+
+-- =============================================================================
+-- PREGUNTA 4: CALIBRACIÓN Y UMBRALES AGRONÓMICOS DE RIEGO
+-- Texto para el bot:
+-- "¿Cuáles son los umbrales de humedad de activación y corte para el Sector 1 de Orquídeas y cuál es el tiempo máximo de riego seguro permitido?"
+-- =============================================================================
+SELECT 
+    s.nombre_sector,
+    s.tipo_cultivo,
+    u.humedad_min_on AS umbral_min_activacion,
+    u.humedad_max_off AS umbral_max_apagado,
+    u.tiempo_max_riego_seg AS tiempo_maximo_segundos,
+    u.actualizado_en
+FROM umbrales_configuracion u
+JOIN sectores s ON u.id_sector = s.id_sector
+WHERE s.id_sector = 1;
+
+
+
+-- =============================================================================
+-- PREGUNTA 5: ASIGNACIÓN DE PERSONAL, CULTIVO Y ESTADO DEL NODO IOT
+-- Texto para el bot:
+-- "¿Quién es el encargado del Invernadero 3 de Semilleros, cuál es su correo y el nodo ESP32 asignado está en línea?"
+-- =============================================================================
+SELECT 
+    s.nombre_sector,
+    s.tipo_cultivo,
+    s.encargado_nombre,
+    s.encargado_rol,
+    s.encargado_correo,
+    d.id_dispositivo,
+    d.estado_conexion,
+    d.ip_origen,
+    d.version_firmware,
+    d.ultimo_ping
+FROM sectores s
+LEFT JOIN estado_dispositivos d ON s.id_sector = d.id_sector
+WHERE s.id_sector = 3;
